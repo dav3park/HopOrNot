@@ -23,6 +23,7 @@ collector:
   daily-limit: ${DAILY_LIMIT:990}        # 포털 한도 1,000회 중 수동 테스트용 10회 여유
   store-raw-until: ${STORE_RAW_UNTIL:}   # 이 날짜까지 응답 원문(JSON)도 저장. 비우면 저장 안 함
   discord-webhook: ${DISCORD_WEBHOOK:}
+  report-cron: "0 10 9,15,22 * * *"   # 초 분 시 일 월 요일 → 매일 09:10, 15:10, 22:10
 
   routes:
     - name: "1112"
