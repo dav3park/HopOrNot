@@ -36,7 +36,8 @@ collector:
   # 노선 3개 기준 약 840회/일
   windows:
     - { start: "07:00", end: "09:00", interval-seconds: 120 }
-    - { start: "17:00", end: "20:00", interval-seconds: 120 }
-    - { start: "06:00", end: "07:00", interval-seconds: 360 }
-    - { start: "09:00", end: "17:00", interval-seconds: 360 }
-    - { start: "20:00", end: "24:00", interval-seconds: 360 }
+    - { start: "17:00", end: "22:00", interval-seconds: 120 }
+    - { start: "06:00", end: "07:00", interval-seconds: 420 }
+    - { start: "09:00", end: "17:00", interval-seconds: 420 }
+    - { start: "22:00", end: "24:00", interval-seconds: 420 }
+    - { start: "00:00", end: "01:00", interval-seconds: 420 }
