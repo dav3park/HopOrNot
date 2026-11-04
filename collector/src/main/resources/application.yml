@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: bus-collector
+  main:
+    web-application-type: none   # 웹 서버 없이 스케줄러만 실행 (메모리 절약)
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:db}:5432/${POSTGRES_DB:bus}
+    username: ${POSTGRES_USER:bus}
+    password: ${POSTGRES_PASSWORD}
+    hikari:
+      maximum-pool-size: 3
+  flyway:
+    enabled: true
+
+logging:
+  level:
+    root: INFO
+    kr.khu.bus.collector: INFO
+
+collector:
+  zone: Asia/Seoul
+  service-key: ${GBIS_KEY}
+  daily-limit: ${DAILY_LIMIT:990}        # 포털 한도 1,000회 중 수동 테스트용 10회 여유
+  store-raw-until: ${STORE_RAW_UNTIL:}   # 이 날짜까지 응답 원문(JSON)도 저장. 비우면 저장 안 함
+  discord-webhook: ${DISCORD_WEBHOOK:}
+
+  routes:
+    - name: "1112"
+      route-id: 234000016
+    - name: "M5107"
+      route-id: 234001243
+    - name: "5100"
+      route-id: 200000115
+
+  # 단계 A (기준선 2주): 피크 2분, 그 외 6분, 00~06시 중지
+  # 노선 3개 기준 약 840회/일
+  windows:
+    - { start: "07:00", end: "09:00", interval-seconds: 120 }
+    - { start: "17:00", end: "20:00", interval-seconds: 120 }
+    - { start: "06:00", end: "07:00", interval-seconds: 360 }
+    - { start: "09:00", end: "17:00", interval-seconds: 360 }
+    - { start: "20:00", end: "24:00", interval-seconds: 360 }

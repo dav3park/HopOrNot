@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - max_connections=20
+      - -c
+      - timezone=Asia/Seoul
+    env_file: .env
+    environment:
+      TZ: Asia/Seoul
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"   # 서버 내부에서만 접속 (맥에서는 SSH 터널로)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+    restart: unless-stopped
+
+  collector:
+    build: .
+    env_file: .env
+    environment:
+      TZ: Asia/Seoul
+      DB_HOST: db
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx320m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 512m
+    restart: unless-stopped
+
+volumes:
+  pgdata:
