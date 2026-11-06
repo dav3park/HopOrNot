@@ -5,7 +5,7 @@
 **[브라우저에서 프로토타입 열기](https://dav3park.github.io/hopornot/design/prototype/)**
 
 - 폰에서도 열린다. 설치할 것 없음
-- 이 링크는 리포 주인이 GitHub Pages를 켜야 열린다: **Settings → Pages → Source: Deploy from a branch → Branch: `design/bus-route-mockup`, 폴더 `/ (root)` → Save**. 1~2분 뒤부터 열림
+- 이 링크는 GitHub Pages를 켜야 열린다: **Settings → Pages → Source: Deploy from a branch → Branch: `design/bus-route-mockup`, 폴더 `/ (root)` → Save**. 1~2분 뒤부터 열림
 - 그 전에는 `design/prototype/index.html`을 받아서 더블클릭하면 똑같이 돌아간다 (파일 하나에 다 들어 있음)
 
 ## 화면 흐름
