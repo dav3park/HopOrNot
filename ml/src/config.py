@@ -66,7 +66,8 @@ NO_SEAT_INFO = -1  # remain_seat_cnt 정보 없음. 0석(만석)과 다르다
 # 단계별 최소 잔여석: 0석 / 1–4석 / 5–9석 / 10석 이상
 STAGE_MIN_SEATS = (0, 1, 5, 10)
 
-MAX_STOPS_AHEAD = 20  # 몇 정거장 앞까지 예측할지 (열린 질문, README 13장)
+MAX_STOPS_AHEAD = 20  # 실제 정류장 기준 몇 개 앞까지 예측할지 (열린 질문, README 13장)
+LEAD_MAX_AGE_MINUTES = 120  # 이보다 오래된 앞차 기록은 특징으로 쓰지 않는다
 
 # 양 끝 날짜 포함. 하루의 경계는 DAY_BOUNDARY_HOUR
 SPLITS = {
