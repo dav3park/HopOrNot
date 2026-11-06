@@ -31,6 +31,7 @@ a{color:inherit}a:hover{color:inherit}
 </div>
 <div style="font-size: 14px; color: #3A3A3C">{{r.from}} → {{r.to}}</div>
 <div style="font-size: 12px; color: #6C6C70">운행 중 {{r.running}}대 · 가장 가까운 버스 {{r.eta}}</div>
+<div style="font-size: 12px; font-weight: 700; color: #1F5FBF">{{r.advice}}</div>
 </div>
 <svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="#8E8E93" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2,2 8,8 2,14"></polyline></svg>
 </a>
@@ -38,7 +39,7 @@ a{color:inherit}a:hover{color:inherit}
 </div>
 <div style="margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; color: #6C6C70">
 <span style="width: 8px; height: 8px; border-radius: 4px; background: #34C759"></span>
-<span>실시간 · 방금 갱신됨</span>
+<span>실시간 · 탑승 확률은 내 정류장 기준 예측</span>
 </div>
 </div>
 </x-dc>
@@ -47,9 +48,9 @@ class Component extends DCLogic {
 renderVals() {
 return {
 routes: [
-{ no: '5100', kind: '직행좌석', from: '경희대학교', to: '강남역', running: 4, eta: '3분', color: '#E5332A', soft: '#FDECEB' },
-{ no: 'M5107', kind: '광역급행 M', from: '경희대학교', to: '서울역', running: 3, eta: '7분', color: '#B4123C', soft: '#F8E6EB' },
-{ no: '1112', kind: '직행좌석', from: '경희대학교', to: '강변역', running: 2, eta: '12분', color: '#E5332A', soft: '#FDECEB' }
+{ no: '5100', kind: '직행좌석', from: '경희대학교', to: '강남역', running: 4, eta: '3분', advice: '1대 보내면 탑승 확률 82%', color: '#E5332A', soft: '#FDECEB' },
+{ no: 'M5107', kind: '광역급행 M', from: '경희대학교', to: '서울역', running: 3, eta: '7분', advice: '이번 버스 탑승 확률 76%', color: '#B4123C', soft: '#F8E6EB' },
+{ no: '1112', kind: '직행좌석', from: '경희대학교', to: '강변역', running: 2, eta: '12분', advice: '2대 보내면 탑승 확률 71%', color: '#E5332A', soft: '#FDECEB' }
 ]
 };
 }

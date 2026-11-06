@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HopOrNot 프로토타입</title>
+<style>
+html,body{margin:0;height:100%}
+body{background:#E5E5EA;display:flex;align-items:center;justify-content:center;overflow:hidden;font-family:-apple-system,'SF Pro Text','Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#1C1C1E;-webkit-font-smoothing:antialiased}
+#stage{position:relative}
+#phone{position:absolute;left:0;top:0;width:390px;height:844px;transform-origin:0 0;border-radius:44px;overflow:hidden;background:#FFFFFF;box-shadow:0 20px 60px rgba(0,0,0,0.18)}
+@media (max-width:499px){#phone{border-radius:0;box-shadow:none}}
+.screen{position:absolute;inset:0;width:390px;height:844px;overflow:hidden;font-family:inherit}
+button{font-family:inherit;-webkit-tap-highlight-color:transparent}
+svg{display:block}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navbtn{display:flex;align-items:center;gap:4px;min-height:44px;padding:0 4px;border:0;background:transparent;color:#007AFF;font-size:17px;cursor:pointer}
+.jump{min-height:44px;border:0;border-radius:12px;background:#F2F2F7;color:#1C1C1E;font-size:13px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+.jumpsub{font-size:11px;font-weight:500;color:#6C6C70;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lg{display:flex;align-items:center;gap:4px}
+.lgdot{width:10px;height:10px;border-radius:5px}
+.stopdot{position:absolute;top:45px;width:14px;height:14px;border-radius:7px;background:#FFFFFF;border:3px solid #C7C7CC;box-sizing:border-box}
+.spinner{width:22px;height:22px;border-radius:11px;border:2.5px solid #E5E5EA;border-top-color:#6C6C70;box-sizing:border-box;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes busSlide{0%{transform:translateX(-70px)}100%{transform:translateX(70px)}}
+.slide{animation:busSlide 2.4s ease-in-out infinite alternate}
+@keyframes pulse{0%{transform:scale(0.85);opacity:0.9}100%{transform:scale(1.4);opacity:0}}
+.pulse{animation:pulse 1.4s ease-out infinite}
+@keyframes ring{0%{transform:scale(1);opacity:1}100%{transform:scale(1.9);opacity:0}}
+.ring{animation:ring 1.6s ease-out infinite}
+</style>
+</head>
+<body>
+<div id="stage"><div id="phone"></div></div>
+<script>!function(){var n,l,t,u,i,o,r,e,f,c,a=65536,s=1<<17,h={},v=[],p=/acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i,y=Array.isArray;function d(n,l){for(var t in l)n[t]=l[t];return n}function _(n){var l=n.parentNode;l&&l.removeChild(n)}function m(l,t,u){var i,o,r,e={};for(r in t)"key"==r?i=t[r]:"ref"==r?o=t[r]:e[r]=t[r];if(arguments.length>2&&(e.children=arguments.length>3?n.call(arguments,2):u),"function"==typeof l&&null!=l.defaultProps)for(r in l.defaultProps)void 0===e[r]&&(e[r]=l.defaultProps[r]);return g(l,e,i,o,null)}function g(n,u,i,o,r){var e={type:n,props:u,key:i,ref:o,__k:null,__:null,__b:0,__e:null,__d:void 0,__c:null,constructor:void 0,__v:null==r?++t:r,__i:-1,__u:0};return null==r&&null!=l.vnode&&l.vnode(e),e}function b(n){return n.children}function k(n,l){this.props=n,this.context=l}function w(n,l){if(null==l)return n.__?w(n.__,n.__i+1):null;for(var t;l<n.__k.length;l++)if(null!=(t=n.__k[l])&&null!=t.__e)return t.__e;return"function"==typeof n.type?w(n):null}function C(n){var l,t;if(null!=(n=n.__)&&null!=n.__c){for(n.__e=n.__c.base=null,l=0;l<n.__k.length;l++)if(null!=(t=n.__k[l])&&null!=t.__e){n.__e=n.__c.base=t.__e;break}return C(n)}}function x(n){(!n.__d&&(n.__d=!0)&&i.push(n)&&!P.__r++||o!==l.debounceRendering)&&((o=l.debounceRendering)||r)(P)}function P(){var n,t,u,o,r,f,c,a,s;for(i.sort(e);n=i.shift();)n.__d&&(t=i.length,o=void 0,f=(r=(u=n).__v).__e,a=[],s=[],(c=u.__P)&&((o=d({},r)).__v=r.__v+1,l.vnode&&l.vnode(o),L(c,o,r,u.__n,void 0!==c.ownerSVGElement,32&r.__u?[f]:null,a,null==f?w(r):f,!!(32&r.__u),s),o.__.__k[o.__i]=o,M(a,o,s),o.__e!=f&&C(o)),i.length>t&&i.sort(e));P.__r=0}function S(n,l,t,u,i,o,r,e,f,c,s){var p,y,d,_,m,g=u&&u.__k||v,b=l.length;for(t.__d=f,$(t,l,g),f=t.__d,p=0;p<b;p++)null!=(d=t.__k[p])&&"boolean"!=typeof d&&"function"!=typeof d&&(y=-1===d.__i?h:g[d.__i]||h,d.__i=p,L(n,d,y,i,o,r,e,f,c,s),_=d.__e,d.ref&&y.ref!=d.ref&&(y.ref&&z(y.ref,null,d),s.push(d.ref,d.__c||_,d)),null==m&&null!=_&&(m=_),d.__u&a||y.__k===d.__k?f=A(d,f,n):"function"==typeof d.type&&void 0!==d.__d?f=d.__d:_&&(f=_.nextSibling),d.__d=void 0,d.__u&=-196609);t.__d=f,t.__e=m}function $(n,l,t){var u,i,o,r,e,f=l.length,c=t.length,h=c,v=0;for(n.__k=[],u=0;u<f;u++)null!=(i=n.__k[u]=null==(i=l[u])||"boolean"==typeof i||"function"==typeof i?null:"string"==typeof i||"number"==typeof i||"bigint"==typeof i||i.constructor==String?g(null,i,null,null,i):y(i)?g(b,{children:i},null,null,null):void 0===i.constructor&&i.__b>0?g(i.type,i.props,i.key,i.ref?i.ref:null,i.__v):i)?(i.__=n,i.__b=n.__b+1,e=E(i,t,r=u+v,h),i.__i=e,o=null,-1!==e&&(h--,(o=t[e])&&(o.__u|=s)),null==o||null===o.__v?(-1==e&&v--,"function"!=typeof i.type&&(i.__u|=a)):e!==r&&(e===r+1?v++:e>r?h>f-r?v+=e-r:v--:v=e<r&&e==r-1?e-r:0,e!==u+v&&(i.__u|=a))):(o=t[u])&&null==o.key&&o.__e&&(o.__e==n.__d&&(n.__d=w(o)),F(o,o,!1),t[u]=null,h--);if(h)for(u=0;u<c;u++)null!=(o=t[u])&&0==(o.__u&s)&&(o.__e==n.__d&&(n.__d=w(o)),F(o,o))}function A(n,l,t){var u,i;if("function"==typeof n.type){for(u=n.__k,i=0;u&&i<u.length;i++)u[i]&&(u[i].__=n,l=A(u[i],l,t));return l}return n.__e!=l&&(t.insertBefore(n.__e,l||null),l=n.__e),l&&l.nextSibling}function E(n,l,t,u){var i=n.key,o=n.type,r=t-1,e=t+1,f=l[t];if(null===f||f&&i==f.key&&o===f.type)return t;if(u>(null!=f&&0==(f.__u&s)?1:0))for(;r>=0||e<l.length;){if(r>=0){if((f=l[r])&&0==(f.__u&s)&&i==f.key&&o===f.type)return r;r--}if(e<l.length){if((f=l[e])&&0==(f.__u&s)&&i==f.key&&o===f.type)return e;e++}}return-1}function H(n,l,t){"-"===l[0]?n.setProperty(l,null==t?"":t):n[l]=null==t?"":"number"!=typeof t||p.test(l)?t:t+"px"}function I(n,l,t,u,i){var o;n:if("style"===l)if("string"==typeof t)n.style.cssText=t;else{if("string"==typeof u&&(n.style.cssText=u=""),u)for(l in u)t&&l in t||H(n.style,l,"");if(t)for(l in t)u&&t[l]===u[l]||H(n.style,l,t[l])}else if("o"===l[0]&&"n"===l[1])o=l!==(l=l.replace(/(PointerCapture)$|Capture$/,"$1")),l=l.toLowerCase()in n?l.toLowerCase().slice(2):l.slice(2),n.l||(n.l={}),n.l[l+o]=t,t?u?t.t=u.t:(t.t=Date.now(),n.addEventListener(l,o?D:T,o)):n.removeEventListener(l,o?D:T,o);else{if(i)l=l.replace(/xlink(H|:h)/,"h").replace(/sName$/,"s");else if("width"!==l&&"height"!==l&&"href"!==l&&"list"!==l&&"form"!==l&&"tabIndex"!==l&&"download"!==l&&"rowSpan"!==l&&"colSpan"!==l&&"role"!==l&&l in n)try{n[l]=null==t?"":t;break n}catch(n){}"function"==typeof t||(null==t||!1===t&&"-"!==l[4]?n.removeAttribute(l):n.setAttribute(l,t))}}function T(n){var t=this.l[n.type+!1];if(n.u){if(n.u<=t.t)return}else n.u=Date.now();return t(l.event?l.event(n):n)}function D(n){return this.l[n.type+!0](l.event?l.event(n):n)}function L(n,t,u,i,o,r,e,f,c,a){var s,h,v,p,_,m,g,w,C,x,P,$,A,E,H,I=t.type;if(void 0!==t.constructor)return null;128&u.__u&&(c=!!(32&u.__u),r=[f=t.__e=u.__e]),(s=l.__b)&&s(t);n:if("function"==typeof I)try{if(w=t.props,C=(s=I.contextType)&&i[s.__c],x=s?C?C.props.value:s.__:i,u.__c?g=(h=t.__c=u.__c).__=h.__E:("prototype"in I&&I.prototype.render?t.__c=h=new I(w,x):(t.__c=h=new k(w,x),h.constructor=I,h.render=N),C&&C.sub(h),h.props=w,h.state||(h.state={}),h.context=x,h.__n=i,v=h.__d=!0,h.__h=[],h._sb=[]),null==h.__s&&(h.__s=h.state),null!=I.getDerivedStateFromProps&&(h.__s==h.state&&(h.__s=d({},h.__s)),d(h.__s,I.getDerivedStateFromProps(w,h.__s))),p=h.props,_=h.state,h.__v=t,v)null==I.getDerivedStateFromProps&&null!=h.componentWillMount&&h.componentWillMount(),null!=h.componentDidMount&&h.__h.push(h.componentDidMount);else{if(null==I.getDerivedStateFromProps&&w!==p&&null!=h.componentWillReceiveProps&&h.componentWillReceiveProps(w,x),!h.__e&&(null!=h.shouldComponentUpdate&&!1===h.shouldComponentUpdate(w,h.__s,x)||t.__v===u.__v)){for(t.__v!==u.__v&&(h.props=w,h.state=h.__s,h.__d=!1),t.__e=u.__e,t.__k=u.__k,t.__k.forEach(function(n){n&&(n.__=t)}),P=0;P<h._sb.length;P++)h.__h.push(h._sb[P]);h._sb=[],h.__h.length&&e.push(h);break n}null!=h.componentWillUpdate&&h.componentWillUpdate(w,h.__s,x),null!=h.componentDidUpdate&&h.__h.push(function(){h.componentDidUpdate(p,_,m)})}if(h.context=x,h.props=w,h.__P=n,h.__e=!1,$=l.__r,A=0,"prototype"in I&&I.prototype.render){for(h.state=h.__s,h.__d=!1,$&&$(t),s=h.render(h.props,h.state,h.context),E=0;E<h._sb.length;E++)h.__h.push(h._sb[E]);h._sb=[]}else do{h.__d=!1,$&&$(t),s=h.render(h.props,h.state,h.context),h.state=h.__s}while(h.__d&&++A<25);h.state=h.__s,null!=h.getChildContext&&(i=d(d({},i),h.getChildContext())),v||null==h.getSnapshotBeforeUpdate||(m=h.getSnapshotBeforeUpdate(p,_)),S(n,y(H=null!=s&&s.type===b&&null==s.key?s.props.children:s)?H:[H],t,u,i,o,r,e,f,c,a),h.base=t.__e,t.__u&=-161,h.__h.length&&e.push(h),g&&(h.__E=h.__=null)}catch(n){t.__v=null,c||null!=r?(t.__e=f,t.__u|=c?160:32,r[r.indexOf(f)]=null):(t.__e=u.__e,t.__k=u.__k),l.__e(n,t,u)}else null==r&&t.__v===u.__v?(t.__k=u.__k,t.__e=u.__e):t.__e=j(u.__e,t,u,i,o,r,e,c,a);(s=l.diffed)&&s(t)}function M(n,t,u){t.__d=void 0;for(var i=0;i<u.length;i++)z(u[i],u[++i],u[++i]);l.__c&&l.__c(t,n),n.some(function(t){try{n=t.__h,t.__h=[],n.some(function(n){n.call(t)})}catch(n){l.__e(n,t.__v)}})}function j(l,t,u,i,o,r,e,f,c){var a,s,v,p,d,m,g,b=u.props,k=t.props,C=t.type;if("svg"===C&&(o=!0),null!=r)for(a=0;a<r.length;a++)if((d=r[a])&&"setAttribute"in d==!!C&&(C?d.localName===C:3===d.nodeType)){l=d,r[a]=null;break}if(null==l){if(null===C)return document.createTextNode(k);l=o?document.createElementNS("http://www.w3.org/2000/svg",C):document.createElement(C,k.is&&k),r=null,f=!1}if(null===C)b===k||f&&l.data===k||(l.data=k);else{if(r=r&&n.call(l.childNodes),b=u.props||h,!f&&null!=r)for(b={},a=0;a<l.attributes.length;a++)b[(d=l.attributes[a]).name]=d.value;for(a in b)d=b[a],"children"==a||("dangerouslySetInnerHTML"==a?v=d:"key"===a||a in k||I(l,a,null,d,o));for(a in k)d=k[a],"children"==a?p=d:"dangerouslySetInnerHTML"==a?s=d:"value"==a?m=d:"checked"==a?g=d:"key"===a||f&&"function"!=typeof d||b[a]===d||I(l,a,d,b[a],o);if(s)f||v&&(s.__html===v.__html||s.__html===l.innerHTML)||(l.innerHTML=s.__html),t.__k=[];else if(v&&(l.innerHTML=""),S(l,y(p)?p:[p],t,u,i,o&&"foreignObject"!==C,r,e,r?r[0]:u.__k&&w(u,0),f,c),null!=r)for(a=r.length;a--;)null!=r[a]&&_(r[a]);f||(a="value",void 0!==m&&(m!==l[a]||"progress"===C&&!m||"option"===C&&m!==b[a])&&I(l,a,m,b[a],!1),a="checked",void 0!==g&&g!==l[a]&&I(l,a,g,b[a],!1))}return l}function z(n,t,u){try{"function"==typeof n?n(t):n.current=t}catch(n){l.__e(n,u)}}function F(n,t,u){var i,o;if(l.unmount&&l.unmount(n),(i=n.ref)&&(i.current&&i.current!==n.__e||z(i,null,t)),null!=(i=n.__c)){if(i.componentWillUnmount)try{i.componentWillUnmount()}catch(n){l.__e(n,t)}i.base=i.__P=null,n.__c=void 0}if(i=n.__k)for(o=0;o<i.length;o++)i[o]&&F(i[o],t,u||"function"!=typeof n.type);u||null==n.__e||_(n.__e),n.__=n.__e=n.__d=void 0}function N(n,l,t){return this.constructor(n,t)}function O(t,u,i){var o,r,e,f;l.__&&l.__(t,u),r=(o="function"==typeof i)?null:i&&i.__k||u.__k,e=[],f=[],L(u,t=(!o&&i||u).__k=m(b,null,[t]),r||h,h,void 0!==u.ownerSVGElement,!o&&i?[i]:r?null:u.firstChild?n.call(u.childNodes):null,e,!o&&i?i:r?r.__e:u.firstChild,o,f),M(e,t,f)}n=v.slice,l={__e:function(n,l,t,u){for(var i,o,r;l=l.__;)if((i=l.__c)&&!i.__)try{if((o=i.constructor)&&null!=o.getDerivedStateFromError&&(i.setState(o.getDerivedStateFromError(n)),r=i.__d),null!=i.componentDidCatch&&(i.componentDidCatch(n,u||{}),r=i.__d),r)return i.__E=i}catch(l){n=l}throw n}},t=0,u=function(n){return null!=n&&null==n.constructor},k.prototype.setState=function(n,l){var t;t=null!=this.__s&&this.__s!==this.state?this.__s:this.__s=d({},this.state),"function"==typeof n&&(n=n(d({},t),this.props)),n&&d(t,n),null!=n&&this.__v&&(l&&this._sb.push(l),x(this))},k.prototype.forceUpdate=function(n){this.__v&&(this.__e=!0,n&&this.__h.push(n),x(this))},k.prototype.render=b,i=[],r="function"==typeof Promise?Promise.prototype.then.bind(Promise.resolve()):setTimeout,e=function(n,l){return n.__v.__b-l.__v.__b},P.__r=0,f=0,c={__proto__:null,render:O,hydrate:function n(l,t){O(l,t,n)},createElement:m,h:m,Fragment:b,createRef:function(){return{current:null}},isValidElement:u,Component:k,cloneElement:function(l,t,u){var i,o,r,e,f=d({},l.props);for(r in l.type&&l.type.defaultProps&&(e=l.type.defaultProps),t)"key"==r?i=t[r]:"ref"==r?o=t[r]:f[r]=void 0===t[r]&&void 0!==e?e[r]:t[r];return arguments.length>2&&(f.children=arguments.length>3?n.call(arguments,2):u),g(l.type,f,i||l.key,o||l.ref,null)},createContext:function(n,l){var t={__c:l="__cC"+f++,__:n,Consumer:function(n,l){return n.children(l)},Provider:function(n){var t,u;return this.getChildContext||(t=[],(u={})[l]=this,this.getChildContext=function(){return u},this.shouldComponentUpdate=function(n){this.props.value!==n.value&&t.some(function(n){n.__e=!0,x(n)})},this.sub=function(n){t.push(n);var l=n.componentWillUnmount;n.componentWillUnmount=function(){t.splice(t.indexOf(n),1),l&&l.call(n)}}),n.children}};return t.Provider.__=t.Consumer.contextType=t},toChildArray:function n(l,t){return t=t||[],null==l||"boolean"==typeof l||(y(l)?l.some(function(l){n(l,t)}):t.push(l)),t},options:l},typeof module<"u"?module.exports=c:self.preact=c}();
+//# sourceMappingURL=preact.min.js.map
+</script>
+<script>!function(n,e){"object"==typeof exports&&"undefined"!=typeof module?module.exports=e():"function"==typeof define&&define.amd?define(e):n.htm=e()}(this,function(){var n=function(e,t,u,s){var r;t[0]=0;for(var p=1;p<t.length;p++){var h=t[p++],o=t[p]?(t[0]|=h?1:2,u[t[p++]]):t[++p];3===h?s[0]=o:4===h?s[1]=Object.assign(s[1]||{},o):5===h?(s[1]=s[1]||{})[t[++p]]=o:6===h?s[1][t[++p]]+=o+"":h?(r=e.apply(o,n(e,o,u,["",null])),s.push(r),o[0]?t[0]|=2:(t[p-2]=0,t[p]=r)):s.push(o)}return s},e=new Map;return function(t){var u=e.get(this);return u||(u=new Map,e.set(this,u)),(u=n(this,u.get(t)||(u.set(t,u=function(n){for(var e,t,u=1,s="",r="",p=[0],h=function(n){1===u&&(n||(s=s.replace(/^\s*\n\s*|\s*\n\s*$/g,"")))?p.push(0,n,s):3===u&&(n||s)?(p.push(3,n,s),u=2):2===u&&"..."===s&&n?p.push(4,n,0):2===u&&s&&!n?p.push(5,0,!0,s):u>=5&&((s||!n&&5===u)&&(p.push(u,0,s,t),u=6),n&&(p.push(u,n,0,t),u=6)),s=""},o=0;o<n.length;o++){o&&(1===u&&h(),h(o));for(var f=0;f<n[o].length;f++)e=n[o][f],1===u?"<"===e?(h(),p=[p],u=3):s+=e:4===u?"--"===s&&">"===e?(u=1,s=""):s=e+s[0]:r?e===r?r="":s+=e:'"'===e||"'"===e?r=e:">"===e?(h(),u=1):u&&("="===e?(u=5,t=s,s=""):"/"===e&&(u<5||">"===n[o][f+1])?(h(),3===u&&(p=p[0]),u=p,(p=p[0]).push(2,0,u),u=0):" "===e||"\t"===e||"\n"===e||"\r"===e?(h(),u=2):s+=e),3===u&&"!--"===s&&(u=4,p=p[0])}return h(),p}(t)),u),arguments,[])).length>1?u:u[0]}});
+</script>
+<script>(function () {
+var h = preact.h, Fragment = preact.Fragment, Component = preact.Component;
+var html = htm.bind(h);
+
+var SP = 110, C = 195, HALF = 195 / 110;
+var FB = 780, FT = 396, SX0 = 146, SXW = 228;
+var BOUNCE = 'cubic-bezier(.34,1.56,.64,1)';
+var TX = 195, TY = 403.5, PS = 1.98;
+var MIN_PER_STOP = 2, WALK_PER_STOP = 4, TH = 0.7;
+var INIT = [0.92, 0.72, 0.47, 0.33, 0.19, 0.05];
+var FULL = [0.6, 0.5, 0.95, 0.9, 0.42, 0.2];
+var ROUTES = {
+  '5100': { kind: '직행좌석', color: '#E5332A', soft: '#FDECEB', trail: 'rgba(229,51,42,0.45)', stops: ['경희대학교', '경희대정문', '서천동', '기흥역', '신갈오거리', '신갈IC', '양재IC', '양재역', '뱅뱅사거리', '강남역'] },
+  'M5107': { kind: '광역급행 M', color: '#B4123C', soft: '#F8E6EB', trail: 'rgba(180,18,60,0.45)', stops: ['경희대학교', '경희대정문', '영통역', '청명역', '기흥IC입구', '서울역버스환승센터', '숭례문', '서울역'] },
+  '1112': { kind: '직행좌석', color: '#E5332A', soft: '#FDECEB', trail: 'rgba(229,51,42,0.45)', stops: ['경희대학교', '경희대정문', '영통역', '신갈오거리', '수지구청', '판교IC', '잠실역', '잠실대교남단', '강변역'] }
+};
+var SELECT_ROUTES = [
+  { no: '5100', running: 4, eta: '3분', advice: '1대 보내면 탑승 확률 82%' },
+  { no: 'M5107', running: 3, eta: '7분', advice: '이번 버스 탑승 확률 76%' },
+  { no: '1112', running: 2, eta: '12분', advice: '2대 보내면 탑승 확률 71%' }
+];
+function isInt(p) { return Math.abs(p - Math.round(p)) < 1e-6; }
+function bub(d) { return 1 + 0.45 * Math.exp(-d * d * 1.6); }
+function makeBuses(n) {
+  return INIT.map(function (f, i) {
+    var p = Math.round(f * (n - 1) * 4) / 4;
+    return { id: i, gen: 0, pos: p, dwell: isInt(p) ? 1 : 0, jump: false };
+  });
+}
+function defMy(n) { return Math.round((n - 1) * 0.55); }
+function ordinal(r) { return r === 0 ? '이번' : r === 1 ? '다음' : (r + 1) + '번째'; }
+function prob(b, i, span) { var f = FULL[(b.id + b.gen * 2) % FULL.length]; return Math.max(0.03, Math.min(0.98, 0.98 - f * (i / span) * 1.35)); }
+function pct(p) { return Math.round(p * 100) + '%'; }
+function fillOf(p) { return p >= 0.7 ? '#1F5FBF' : p >= 0.4 ? '#7FA6DD' : '#F0A04B'; }
+function textOf(p) { return p >= 0.7 ? '#1F5FBF' : p >= 0.4 ? '#4A6FA5' : '#B4570A'; }
+
+var BUS_TOP = function (color) {
+  return html`<svg width="30" height="44" viewBox="0 0 30 44" aria-hidden="true"><rect x="0" y="5" width="4" height="3" rx="1" fill="#1C1C1E"></rect><rect x="26" y="5" width="4" height="3" rx="1" fill="#1C1C1E"></rect><rect x="3" y="1" width="24" height="42" rx="6" fill=${color}></rect><rect x="6" y="3.5" width="18" height="7" rx="2.5" fill="#FFFFFF" opacity="0.92"></rect><rect x="7" y="14" width="16" height="21" rx="2" fill="#000000" opacity="0.14"></rect><rect x="11" y="18" width="8" height="5" rx="1" fill="#FFFFFF" opacity="0.4"></rect><rect x="8" y="38.5" width="14" height="2.5" rx="1.2" fill="#FFFFFF" opacity="0.55"></rect></svg>`;
+};
+var BUS_SIDE = function (color, w, hgt, fill2) {
+  return html`<svg width=${w} height=${hgt} viewBox="0 0 52 36" aria-hidden="true"><rect x="1" y="2" width="50" height="26" rx="7" fill=${color}></rect><rect x="6" y="7" width="9" height="9" rx="2" fill="#FFFFFF" opacity="0.92"></rect><rect x="18" y="7" width="9" height="9" rx="2" fill="#FFFFFF" opacity="0.92"></rect><rect x="30" y="7" width="9" height="9" rx="2" fill="#FFFFFF" opacity="0.92"></rect><rect x="42" y="7" width="6" height="14" rx="2" fill="#FFFFFF" opacity="0.92"></rect><circle cx="13" cy="29" r="5" fill=${fill2 || '#1C1C1E'}></circle><circle cx="39" cy="29" r="5" fill=${fill2 || '#1C1C1E'}></circle></svg>`;
+};
+var CHEVRON = html`<svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="10,2 2,10 10,18"></polyline></svg>`;
+
+window.__scale = 1;
+
+class App extends Component {
+  constructor(props) {
+    super(props);
+    var n = ROUTES['5100'].stops.length;
+    this.state = { screen: 'loading', route: '5100', buses: makeBuses(n), myStop: defMy(n), phase: 'strings', stage: 0, tracked: null, fromX: 0, fromY: 0, pan: 0, dragging: false };
+    this.drag = null;
+    this.timers = [];
+    var self = this;
+    this.down = function (e) { if (self.state.phase !== 'line') return; self.drag = { x: e.clientX, pan: self.clampPan(self.state.pan) }; try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {} self.setState({ dragging: true }); };
+    this.move = function (e) { if (!self.drag) return; self.setState({ pan: self.clampPan(self.drag.pan + (e.clientX - self.drag.x) / window.__scale) }); };
+    this.up = function () { self.drag = null; self.setState({ dragging: false }); };
+    this.goBus = function () { self.setState({ pan: 0 }); };
+    this.goStart = function () { self.setState({ pan: self.trackedPos() * SP }); };
+    this.goEnd = function () { self.setState({ pan: (self.trackedPos() - (self.count() - 1)) * SP }); };
+    this.backToStrings = function () { self.clearTimers(); self.setState({ phase: 'strings', stage: 0, pan: 0 }); };
+    this.backToSelect = function () { self.clearTimers(); self.setState({ screen: 'select', phase: 'strings', stage: 0, pan: 0 }); };
+    this.skipLoading = function () { self.setState({ screen: 'select' }); };
+  }
+  openRoute(no) {
+    var nn = ROUTES[no].stops.length;
+    this.clearTimers();
+    this.setState({ screen: 'live', route: no, buses: makeBuses(nn), myStop: defMy(nn), phase: 'strings', stage: 0, tracked: null, pan: 0 });
+  }
+  count() { return ROUTES[this.state.route].stops.length; }
+  trackedBus() { var id = this.state.tracked, bs = this.state.buses; for (var i = 0; i < bs.length; i++) if (bs[i].id === id) return bs[i]; return bs[0]; }
+  trackedPos() { return Math.min(this.trackedBus().pos, this.count() - 1); }
+  clampPan(p) { var n = this.count(), pos = this.trackedPos(); return Math.min(pos * SP, Math.max((pos - (n - 1)) * SP, p)); }
+  clearTimers() { this.timers.forEach(function (t) { clearTimeout(t); }); this.timers = []; }
+  componentDidMount() {
+    var self = this;
+    this.timer = setInterval(function () { self.tick(); }, 3000);
+    this.loadTimer = setTimeout(function () { if (self.state.screen === 'loading') self.setState({ screen: 'select' }); }, 2400);
+  }
+  componentWillUnmount() { clearInterval(this.timer); clearTimeout(this.loadTimer); this.clearTimers(); }
+  tick() {
+    var n = this.count(), tid = this.state.tracked, lost = false;
+    var buses = this.state.buses.map(function (b) {
+      var o = { id: b.id, gen: b.gen, pos: b.pos, dwell: b.dwell, jump: false };
+      if (o.dwell > 0) { o.dwell -= 1; return o; }
+      if (o.pos >= n - 1 - 1e-6) { o.pos = 0; o.dwell = 2; o.jump = true; o.gen += 1; if (o.id === tid) lost = true; return o; }
+      var np = o.pos + 0.25, ni = Math.floor(o.pos + 1e-6) + 1;
+      if (np >= ni - 1e-6) { np = ni; o.dwell = ((o.id * 3 + ni) % 3 === 0) ? 2 : 1; }
+      o.pos = np;
+      return o;
+    });
+    var patch = { buses: buses };
+    if (lost && this.state.phase === 'line') { patch.phase = 'strings'; patch.pan = 0; }
+    this.setState(patch);
+  }
+  pickBus(id, x, y) {
+    var self = this;
+    if (this.state.phase !== 'strings') return;
+    this.clearTimers();
+    this.setState({ phase: 'fly', stage: 0, tracked: id, fromX: x, fromY: y, pan: 0 });
+    this.timers.push(setTimeout(function () { self.setState({ stage: 1 }); }, 40));
+    this.timers.push(setTimeout(function () { self.setState({ stage: 2 }); }, 680));
+    this.timers.push(setTimeout(function () { self.setState({ phase: 'line', stage: 0 }); }, 980));
+  }
+  vals() {
+    var self = this, st = this.state, key = st.route, R = ROUTES[key];
+    var stops = R.stops, n = stops.length, span = n - 1, accent = R.color;
+    var my = Math.min(st.myStop, span), phase = st.phase;
+    var buses = st.buses;
+
+    var coming = buses.filter(function (b) { return b.pos <= my + 1e-6; }).sort(function (a, b) { return b.pos - a.pos; });
+    var rankOf = {};
+    coming.forEach(function (b, r) { rankOf[b.id] = r; });
+    var cnt = coming.length;
+    var sx = function (r) { return SX0 + (r + 0.5) * SXW / Math.max(cnt, 1); };
+    var colW = Math.min(58, SXW / Math.max(cnt, 1) - 2);
+    var gap = (FB - FT) / span;
+    var fy = function (p) { return FB - p * gap; };
+    var etaMin = function (b, stop) { return (stop - b.pos) * MIN_PER_STOP; };
+    var etaOf = function (b) { var rem = my - b.pos; if (rem <= 1e-6) return '도착'; if (rem <= 0.3) return '곧'; return Math.ceil(rem * MIN_PER_STOP) + '분'; };
+
+    var waitR = -1, bestR = -1, bestP = -1;
+    coming.forEach(function (b, r) { var p = prob(b, my, span); if (waitR < 0 && p >= TH) waitR = r; if (p > bestP) { bestP = p; bestR = r; } });
+    var waitHead, waitSub, waitP;
+    if (waitR >= 0) {
+      var wb = coming[waitR]; waitP = prob(wb, my, span);
+      waitHead = waitR === 0 ? '이번 버스 타세요' : waitR + '대 보내고 ' + ordinal(waitR) + ' 버스';
+      waitSub = (waitR === 0 ? '' : '앞 ' + waitR + '대는 만석 예상 · ') + '약 ' + Math.max(0, Math.ceil(etaMin(wb, my))) + '분 후 도착';
+    } else if (cnt > 0) {
+      waitP = bestP; waitHead = '오는 버스 모두 만석 예상'; waitSub = '그나마 ' + ordinal(bestR) + ' 버스가 제일 나음';
+    } else { waitP = 0; waitHead = '오는 버스 없음'; waitSub = '잠시 후 다시 예측'; }
+
+    var mv = null;
+    var limitR = waitR >= 0 ? waitR : cnt;
+    coming.forEach(function (b, r) {
+      if (r >= limitR) return;
+      for (var j = my - 1; j >= Math.ceil(b.pos - 1e-6); j--) {
+        var walk = (my - j) * WALK_PER_STOP, arrive = etaMin(b, j);
+        if (walk > arrive) break;
+        var p = prob(b, j, span);
+        if (p >= TH && (!mv || arrive < mv.arrive)) { mv = { r: r, j: j, p: p, walk: walk, arrive: arrive }; break; }
+      }
+    });
+    var moveText = mv ? '또는 ' + stops[mv.j] + '까지 ' + (my - mv.j) + '정거장 걸어가면 ' + ordinal(mv.r) + ' 버스 ' + pct(mv.p) + ' (도보 ' + mv.walk + '분)' : '거슬러 가도 더 빨리 탈 수 있는 버스 없음';
+
+    var frets = stops.map(function (name, i) {
+      var isMy = i === my, above = i > my, isMove = !!mv && mv.j === i;
+      return {
+        name: name, isMy: isMy, isMove: isMove, aria: name + ' 내 정류장으로 설정',
+        pick: function () { self.setState({ myStop: i }); },
+        lineStyle: 'position: absolute; left: 140px; width: 236px; top: ' + (fy(i) - (isMy ? 1.5 : 0.5)) + 'px; height: ' + (isMy ? 3 : 1) + 'px; background: ' + (isMy ? accent : isMove ? '#1C1C1E' : '#E5E5EA') + ';',
+        btnStyle: 'position: absolute; left: 8px; top: ' + (fy(i) - 21) + 'px; width: 130px; height: 42px; padding: 0 8px; border: 0; background: transparent; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left;',
+        nameStyle: 'font-size: 13px; line-height: 16px; max-width: 114px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ' + (isMy ? 'font-weight: 800; color: ' + accent + ';' : isMove ? 'font-weight: 800; color: #1C1C1E;' : above ? 'font-weight: 500; color: #6C6C70;' : 'font-weight: 600; color: #1C1C1E;')
+      };
+    });
+
+    var strings = coming.map(function (b, r) {
+      var x = sx(r), p = prob(b, my, span), rec = r === waitR;
+      return {
+        id: b.id, label: rec ? '추천' : ordinal(r), eta: etaOf(b), pct: pct(p),
+        pctStyle: 'font-size: 12px; font-weight: 800; color: ' + textOf(p) + ';',
+        headStyle: 'position: absolute; top: 332px; left: ' + (x - colW / 2) + 'px; width: ' + colW + 'px; height: 54px; box-sizing: border-box; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: left .45s ease, width .45s ease; ' + (rec ? 'border: 1.5px solid #1F5FBF; background: #EAF1FB;' : 'border: 1.5px solid transparent;'),
+        highStyle: 'position: absolute; top: ' + (FT - 8) + 'px; height: ' + Math.max(0, fy(my) - FT + 8) + 'px; left: ' + (x - 0.5) + 'px; width: 1px; background: #E5E5EA; transition: left .45s ease;',
+        lowStyle: 'position: absolute; top: ' + fy(my) + 'px; height: ' + (FB + 12 - fy(my)) + 'px; left: ' + (x - 1) + 'px; width: 2px; background: #AEAEB2; transition: left .45s ease;'
+      };
+    });
+
+    var nodes = [];
+    coming.forEach(function (b, r) {
+      var x = sx(r);
+      for (var i = Math.ceil(b.pos - 1e-6); i <= my; i++) {
+        var p = prob(b, i, span), s = i === my ? 14 : 10;
+        nodes.push({ key: b.id + '-' + i, style: 'position: absolute; left: ' + (x - s / 2) + 'px; top: ' + (fy(i) - s / 2) + 'px; width: ' + s + 'px; height: ' + s + 'px; border-radius: ' + s + 'px; background: ' + fillOf(p) + '; box-shadow: 0 0 0 2px #FFFFFF; transition: left .45s ease;' });
+      }
+    });
+    var marks = [];
+    var markAt = function (k, r, i, color) {
+      var x = sx(r), y = fy(i);
+      marks.push({ key: k, style: 'position: absolute; left: ' + (x - 11) + 'px; top: ' + (y - 11) + 'px; width: 22px; height: 22px; border-radius: 11px; border: 2px solid ' + color + '; box-sizing: border-box; pointer-events: none;' });
+    };
+    if (waitR >= 0) markAt('wait', waitR, my, '#1F5FBF');
+    if (mv) markAt('move', mv.r, mv.j, '#1C1C1E');
+
+    var fleet = buses.map(function (b) {
+      var r = rankOf[b.id], vis = r !== undefined;
+      var x = sx(vis ? r : Math.max(cnt - 1, 0)), y = fy(Math.min(b.pos, span));
+      var hideForFly = st.tracked === b.id && phase !== 'strings';
+      var stopped = isInt(b.pos);
+      return {
+        id: b.id, color: accent, trail: R.trail, stopped: stopped,
+        aria: (vis ? ordinal(r) + ' 버스, 내 정류장 탑승 확률 ' + pct(prob(b, my, span)) : '버스') + ', 실시간 노선 보기',
+        pick: function () { self.pickBus(b.id, x, y); },
+        style: 'position: absolute; left: ' + (x - 22) + 'px; top: ' + (y - 22) + 'px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; opacity: ' + (vis && !hideForFly ? 1 : 0) + '; pointer-events: ' + (vis ? 'auto' : 'none') + '; transition: ' + (b.jump ? 'opacity .6s ease' : 'left .45s ease, top 3s linear, opacity .4s ease') + ';'
+      };
+    });
+
+    var tabs = ['5100', 'M5107', '1112'].map(function (no) {
+      var on = no === key;
+      return {
+        no: no, pick: function () { self.openRoute(no); },
+        style: 'min-height: 30px; border: 0; border-radius: 8px; font-size: 14px; cursor: pointer; ' + (on ? 'background: #FFFFFF; color: #1C1C1E; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.12);' : 'background: transparent; color: #3A3A3C; font-weight: 500;')
+      };
+    });
+
+    var tb = this.trackedBus();
+    var pos = Math.min(tb.pos, span);
+    var pan = this.clampPan(st.pan);
+    var vc = pos - pan / SP;
+    var atStop = isInt(pos), cur = Math.round(pos);
+    var nextIdx = atStop ? Math.min(cur + 1, span) : Math.ceil(pos);
+    var atEnd = atStop && cur === span;
+    var mins = Math.max(1, Math.ceil((nextIdx - pos) * MIN_PER_STOP));
+    var trackedRank = rankOf[tb.id];
+    var toMy = my - pos;
+    var tP = prob(tb, my, span);
+    var myLine = toMy > 1e-6 ? '내 정류장까지 ' + Math.ceil(toMy - 1e-6) + '정거장 · 약 ' + Math.ceil(toMy * MIN_PER_STOP) + '분' : (Math.abs(toMy) < 1e-6 ? '내 정류장 도착' : '내 정류장 지남 · 종점까지 ' + (span - Math.floor(pos + 1e-6)) + '정거장');
+
+    var stopItems = stops.map(function (name, i) {
+      var passed = i < pos - 1e-6, here = atStop && i === cur;
+      var s = bub(Math.abs(i - pos + pan / SP));
+      var tag = i === my ? '내 정류장' : i === 0 ? '기점' : i === span ? '종점' : '';
+      var p = prob(tb, i, span);
+      var dot = 'position: absolute; top: 125px; left: ' + (i * SP - 8) + 'px; width: 16px; height: 16px; border-radius: 8px; box-sizing: border-box; transform: scale(' + s.toFixed(3) + '); transition: transform .45s ' + BOUNCE + '; ';
+      dot += here ? 'background: ' + accent + '; border: 3px solid #FFFFFF; box-shadow: 0 0 0 2px ' + accent + ';' : passed ? 'background: #C7C7CC; border: 3px solid #FFFFFF;' : 'background: #FFFFFF; border: 3px solid ' + accent + ';';
+      var lab = 'font-size: 12px; line-height: 15px; text-align: center; word-break: keep-all; ';
+      lab += here ? 'font-weight: 700; color: ' + accent + ';' : passed ? 'font-weight: 500; color: #6C6C70;' : (tag ? 'font-weight: 700; color: #1C1C1E;' : 'font-weight: 500; color: #1C1C1E;');
+      return {
+        name: name, labelStyle: lab, dotStyle: dot, tag: tag, hasProb: !passed, prob: pct(p),
+        probStyle: 'font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 5px; white-space: nowrap; color: ' + textOf(p) + '; background: ' + (p >= 0.7 ? '#EAF1FB' : p >= 0.4 ? '#EEF2F8' : '#FDF1E4') + ';',
+        tagStyle: 'font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px; color: #FFFFFF; white-space: nowrap; background: ' + (i === my ? accent : '#1C1C1E') + ';',
+        labelWrapStyle: 'position: absolute; top: 152px; left: ' + (i * SP - 48) + 'px; width: 96px; display: flex; flex-direction: column; align-items: center; gap: 4px; transform-origin: 50% 0; transform: scale(' + Math.min(s, 1.3).toFixed(3) + '); transition: transform .45s ' + BOUNCE + ';'
+      };
+    });
+
+    var ghosts = buses.map(function (b) {
+      var hidden = b.id === tb.id;
+      var s = bub(Math.abs(b.pos - pos + pan / SP));
+      return { id: b.id, style: 'position: absolute; top: 104px; left: ' + (b.pos * SP - 18) + 'px; width: 36px; height: 24px; opacity: ' + (hidden ? 0 : 0.55) + '; transform-origin: 50% 100%; transform: scale(' + s.toFixed(3) + '); transition: ' + (b.jump ? 'opacity .3s ease' : 'left 3s linear, transform .45s ' + BOUNCE + ', opacity .3s ease') + ';' };
+    });
+
+    var busScale = bub(Math.abs(pan) / SP);
+    var lineVisible = phase === 'line';
+    var d = Math.round(-pan / SP);
+    var W = 326;
+    var winL = Math.max(0, (vc - HALF) / span * W), winR = Math.min(W, (vc + HALF) / span * W);
+
+    var stage = st.stage, flying = phase === 'fly';
+    var fx = stage >= 1 ? TX : st.fromX, fyy = stage >= 1 ? TY : st.fromY;
+
+    return {
+      routeNo: key, kind: R.kind, accent: accent, soft: R.soft, tabs: tabs,
+      fromName: stops[0], toName: stops[span], myName: stops[my],
+      comingText: cnt > 0 ? cnt + '대 오는 중' : '오는 버스 없음',
+      waitHead: waitHead, waitSub: waitSub, waitPct: cnt > 0 ? pct(waitP) : '-',
+      waitPctStyle: 'font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: ' + textOf(waitP) + ';',
+      moveText: moveText, frets: frets, strings: strings, nodes: nodes, marks: marks, fleet: fleet,
+      stringsViewStyle: 'position: absolute; inset: 0; opacity: ' + (phase === 'strings' ? 1 : 0) + '; pointer-events: ' + (phase === 'strings' ? 'auto' : 'none') + '; transition: opacity .35s ease;',
+      lineViewStyle: 'position: absolute; inset: 0; box-sizing: border-box; padding-top: 54px; display: flex; flex-direction: column; gap: 14px; opacity: ' + (phase === 'strings' ? 0 : 1) + '; pointer-events: ' + (lineVisible ? 'auto' : 'none') + '; transition: opacity .45s ease ' + (phase === 'strings' ? '0s' : '.15s') + ';',
+      flyStyle: 'position: absolute; left: ' + (fx - 15) + 'px; top: ' + (fyy - 22) + 'px; width: 30px; height: 44px; pointer-events: none; z-index: 5; opacity: ' + (flying ? 1 : 0) + '; transform: rotate(' + (stage >= 1 ? 90 : 0) + 'deg) scale(' + (stage >= 1 ? PS : 1) + '); transition: ' + (stage >= 1 && flying ? 'left .62s cubic-bezier(.5,0,.2,1), top .62s cubic-bezier(.5,0,.2,1), transform .62s ' + BOUNCE : 'none') + ';',
+      flyTopStyle: 'position: absolute; left: 0; top: 0; opacity: ' + (stage >= 2 ? 0 : 1) + '; transition: opacity .25s ease;',
+      flySideStyle: 'position: absolute; left: -15px; top: 1px; opacity: ' + (stage >= 2 ? 1 : 0) + '; transform: rotate(-90deg) scale(' + (stage >= 2 ? 0.732 : 0.6) + '); transition: opacity .2s ease, transform .3s ' + BOUNCE + ';',
+      trackedLabel: (trackedRank !== undefined ? ordinal(trackedRank) + ' 버스' : '지나간 버스') + ' 추적 중',
+      statusLabel: atEnd ? '종점 도착' : atStop ? stops[cur] + ' 정차 중 · 다음 정류장' : '다음 정류장',
+      nextName: stops[nextIdx], etaText: atEnd ? '도착' : (nextIdx - pos) <= 0.3 ? '곧 도착' : mins + '분',
+      myLine: myLine, trackPct: toMy >= -1e-6 ? pct(tP) : '-',
+      trackPctStyle: 'font-size: 28px; font-weight: 800; letter-spacing: -0.5px; color: ' + (toMy >= -1e-6 ? textOf(tP) : '#6C6C70') + ';',
+      busState: atEnd ? '종점 도착' : atStop ? stops[cur] + ' 정차 중' : stops[nextIdx] + ' 가는 중',
+      panStyle: 'position: absolute; inset: 0; transform: translateX(' + pan + 'px); transition: ' + (st.dragging ? 'none' : 'transform 0.35s ease') + ';',
+      innerStyle: 'position: absolute; left: 0; top: 0; width: 0; height: 100%; transform: translateX(' + (C - pos * SP) + 'px); transition: ' + (tb.jump || flying ? 'none' : 'transform 3s linear') + ';',
+      lineW: span * SP,
+      passedStyle: 'position: absolute; left: 0; top: 130px; height: 6px; border-radius: 3px; background: ' + accent + '; width: ' + (pos * SP) + 'px; transition: ' + (tb.jump || flying ? 'none' : 'width 3s linear') + ';',
+      stopItems: stopItems, ghosts: ghosts,
+      myBusStyle: 'position: absolute; left: 165px; top: 86px; width: 60px; height: 42px; pointer-events: none; transform-origin: 50% 100%; transform: scale(' + busScale.toFixed(3) + '); transition: transform .45s ' + BOUNCE + '; opacity: ' + (lineVisible ? 1 : 0) + ';',
+      myBusLabelStyle: 'position: absolute; left: 0; width: 390px; top: 22px; display: flex; justify-content: center; pointer-events: none; opacity: ' + (lineVisible ? 1 : 0) + '; transform: translateY(' + ((busScale - 1.45) * -40).toFixed(1) + 'px); transition: opacity .3s ease, transform .45s ' + BOUNCE + ';',
+      hiddenLeft: Math.max(0, Math.ceil(vc - HALF)), hiddenRight: Math.max(0, span - Math.floor(vc + HALF)),
+      panned: Math.abs(pan) > 4,
+      viewLabel: d === 0 ? '좌우로 밀어서 정류장별 탑승 확률 보기' : d > 0 ? '내 버스보다 ' + d + '정류장 뒤를 보는 중' : '내 버스보다 ' + (-d) + '정류장 앞을 보는 중',
+      ovBusX: pos / span * W - 6, ovMyX: my / span * W - 1,
+      ovWindowStyle: 'position: absolute; top: 0; height: 18px; border-radius: 9px; background: rgba(0,122,255,0.12); border: 1.5px solid #007AFF; box-sizing: border-box; left: ' + winL + 'px; width: ' + Math.max(18, winR - winL) + 'px; transition: ' + (st.dragging ? 'none' : 'left 0.35s ease, width 0.35s ease') + ';'
+    };
+  }
+
+  renderLoading() {
+    return html`
+<button class="screen" onClick=${this.skipLoading} aria-label="노선 선택으로 이동" style="border: 0; padding: 0; background: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; cursor: pointer; color: #1C1C1E">
+  <div style="width: 220px; height: 70px; position: relative">
+    <div style="position: absolute; left: 0; right: 0; top: 50px; height: 4px; border-radius: 2px; background: #E5E5EA"></div>
+    <div class="stopdot" style="left: 10px"></div><div class="stopdot" style="left: 103px"></div><div class="stopdot" style="left: 196px"></div>
+    <div class="slide" style="position: absolute; left: 84px; top: 4px; width: 52px; height: 36px">${BUS_SIDE('#E5332A', 52, 36)}</div>
+  </div>
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+    <div style="font-size: 34px; font-weight: 800; letter-spacing: -0.5px">HopOrNot</div>
+    <div style="font-size: 15px; color: #6C6C70">탈까, 보낼까. 확률로 정해준다</div>
+  </div>
+  <div style="position: absolute; bottom: 72px; display: flex; flex-direction: column; align-items: center; gap: 12px">
+    <div class="spinner"></div>
+    <div style="font-size: 13px; color: #6C6C70">정류장별 탑승 확률 예측 중</div>
+  </div>
+</button>`;
+  }
+
+  renderSelect() {
+    var self = this;
+    return html`
+<div class="screen" style="box-sizing: border-box; padding: 64px 16px 34px; display: flex; flex-direction: column; gap: 20px; background: #F2F2F7">
+  <div style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+    <div style="font-size: 13px; font-weight: 600; color: #6C6C70">경희대학교 국제캠퍼스 출발</div>
+    <h1 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.4px">노선 선택</h1>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    ${SELECT_ROUTES.map(function (r) {
+      var R = ROUTES[r.no], st = R.stops;
+      return html`<button key=${r.no} onClick=${function () { self.openRoute(r.no); }} style="display: flex; align-items: center; gap: 14px; min-height: 96px; padding: 16px; box-sizing: border-box; background: #FFFFFF; border: 0; border-radius: 18px; text-align: left; cursor: pointer; color: #1C1C1E">
+        <div style=${'width: 52px; height: 52px; border-radius: 14px; background: ' + R.color + '; display: flex; align-items: center; justify-content: center; flex-shrink: 0'}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="15" rx="3"></rect><line x1="4" y1="11" x2="20" y2="11"></line><line x1="7" y1="21" x2="7" y2="18"></line><line x1="17" y1="21" x2="17" y2="18"></line></svg>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <span style="font-size: 26px; font-weight: 800; letter-spacing: -0.3px">${r.no}</span>
+            <span style=${'font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: ' + R.soft + '; color: ' + R.color}>${R.kind}</span>
+          </div>
+          <div style="font-size: 14px; color: #3A3A3C">${st[0]} → ${st[st.length - 1]}</div>
+          <div style="font-size: 12px; color: #6C6C70">운행 중 ${r.running}대 · 가장 가까운 버스 ${r.eta}</div>
+          <div style="font-size: 12px; font-weight: 700; color: #1F5FBF">${r.advice}</div>
+        </div>
+        <svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="#8E8E93" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2,2 8,8 2,14"></polyline></svg>
+      </button>`;
+    })}
+  </div>
+  <div style="margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; color: #6C6C70">
+    <span style="width: 8px; height: 8px; border-radius: 4px; background: #34C759"></span><span>실시간 · 탑승 확률은 내 정류장 기준 예측</span>
+  </div>
+</div>`;
+  }
+
+  renderLive() {
+    var v = this.vals();
+    return html`
+<div class="screen" style="background: #F2F2F7">
+  <div style=${v.stringsViewStyle}>
+    <div style="position: absolute; left: 12px; right: 12px; top: 54px; height: 44px; display: flex; align-items: center; justify-content: space-between">
+      <button onClick=${this.backToSelect} class="navbtn">${CHEVRON}<span>노선</span></button>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6C6C70"><span style="width: 7px; height: 7px; border-radius: 4px; background: #34C759"></span>실시간 · 예측 갱신 중</div>
+    </div>
+    <div style="position: absolute; left: 20px; right: 20px; top: 100px; height: 44px; display: flex; align-items: center; gap: 10px">
+      <span style="font-size: 30px; font-weight: 800; letter-spacing: -0.5px">${v.routeNo}</span>
+      <span style=${'font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: ' + v.soft + '; color: ' + v.accent}>${v.kind}</span>
+      <span style="font-size: 14px; color: #3A3A3C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${v.toName} 방면</span>
+    </div>
+    <div style="position: absolute; left: 16px; right: 16px; top: 150px; height: 36px; box-sizing: border-box; padding: 3px; border-radius: 10px; background: #E3E3E8; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px">
+      ${v.tabs.map(function (t) { return html`<button key=${t.no} onClick=${t.pick} style=${t.style}>${t.no}</button>`; })}
+    </div>
+    <div style="position: absolute; left: 16px; right: 16px; top: 194px; height: 124px; box-sizing: border-box; padding: 12px 14px; border-radius: 18px; background: #FFFFFF; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+        <span style="font-size: 12px; font-weight: 600; color: #6C6C70; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">내 정류장 · ${v.myName} · ${v.comingText}</span>
+        <span style="font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: #EAF1FB; color: #1F5FBF; white-space: nowrap">AI 판단</span>
+      </div>
+      <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 10px">
+        <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+          <span style="font-size: 21px; font-weight: 800; letter-spacing: -0.4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${v.waitHead}</span>
+          <span style="font-size: 13px; color: #3A3A3C">${v.waitSub}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0">
+          <span style="font-size: 11px; color: #6C6C70">탑승 확률</span>
+          <span style=${v.waitPctStyle}>${v.waitPct}</span>
+        </div>
+      </div>
+      <div style="height: 0.5px; background: #D1D1D6"></div>
+      <div style="display: flex; align-items: center; gap: 8px; min-width: 0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3A3A3C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="2"></circle><path d="M9 21l2-6 3 3v3"></path><path d="M8 11l3-3 3 2 3 1"></path><path d="M11 8l-1 5"></path></svg>
+        <span style="font-size: 13px; color: #1C1C1E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${v.moveText}</span>
+      </div>
+    </div>
+    <div style="position: absolute; left: 0; right: 0; top: 326px; bottom: 0; background: #FFFFFF; border-top: 0.5px solid #D1D1D6"></div>
+    ${v.frets.map(function (f, i) {
+      return html`<${Fragment} key=${'f' + i}>
+        <div style=${f.lineStyle}></div>
+        <button onClick=${f.pick} aria-label=${f.aria} style=${f.btnStyle}>
+          <span style=${f.nameStyle}>${f.name}</span>
+          ${f.isMy ? html`<span style=${'font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 5px; background: ' + v.accent + '; color: #FFFFFF'}>내 정류장</span>` : null}
+          ${f.isMove ? html`<span style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 5px; background: #1C1C1E; color: #FFFFFF">여기서 타면 유리</span>` : null}
+        </button>
+      </${Fragment}>`;
+    })}
+    ${v.strings.map(function (s) {
+      return html`<${Fragment} key=${'s' + s.id}>
+        <div style=${s.highStyle}></div>
+        <div style=${s.lowStyle}></div>
+        <div style=${s.headStyle}>
+          <span style="font-size: 11px; font-weight: 600; color: #6C6C70">${s.label}</span>
+          <span style="font-size: 14px; font-weight: 800; letter-spacing: -0.3px; color: #1C1C1E">${s.eta}</span>
+          <span style=${s.pctStyle}>${s.pct}</span>
+        </div>
+      </${Fragment}>`;
+    })}
+    ${v.nodes.map(function (nd) { return html`<div key=${nd.key} style=${nd.style}></div>`; })}
+    ${v.marks.map(function (m) { return html`<${Fragment} key=${m.key}><div class="ring" style=${m.style}></div><div style=${m.style}></div></${Fragment}>`; })}
+    ${v.fleet.map(function (b) {
+      return html`<button key=${'b' + b.id} onClick=${b.pick} aria-label=${b.aria} style=${b.style}>
+        ${b.stopped ? html`<${Fragment}>
+          <span class="pulse" style=${'position: absolute; left: 4px; top: -4px; width: 36px; height: 52px; border-radius: 12px; border: 2px solid ' + b.color + '; box-sizing: border-box'}></span>
+          <span style="position: absolute; left: 50%; top: 46px; transform: translateX(-50%); font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 5px; background: #1C1C1E; color: #FFFFFF; white-space: nowrap">정차</span>
+        </${Fragment}>` : html`<${Fragment}>
+          <span style=${'position: absolute; left: 13px; top: 44px; width: 4px; height: 14px; border-radius: 2px; background: linear-gradient(180deg, ' + b.trail + ', rgba(255,255,255,0))'}></span>
+          <span style=${'position: absolute; left: 27px; top: 44px; width: 4px; height: 14px; border-radius: 2px; background: linear-gradient(180deg, ' + b.trail + ', rgba(255,255,255,0))'}></span>
+        </${Fragment}>`}
+        <span style="position: absolute; left: 7px; top: 0; display: block">${BUS_TOP(b.color)}</span>
+      </button>`;
+    })}
+    <div style="position: absolute; left: 12px; right: 12px; top: 808px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 11px; color: #3A3A3C; white-space: nowrap">
+      <span style="font-weight: 600">탑승 확률</span>
+      <span class="lg"><span class="lgdot" style="background: #1F5FBF"></span>70% 이상</span>
+      <span class="lg"><span class="lgdot" style="background: #7FA6DD"></span>40–69%</span>
+      <span class="lg"><span class="lgdot" style="background: #F0A04B"></span>40% 미만</span>
+    </div>
+    <div style="position: absolute; left: 16px; right: 16px; top: 826px; text-align: center; font-size: 10px; color: #6C6C70">버스 누르면 실시간 노선 · 정류장 누르면 내 정류장 변경</div>
+  </div>
+
+  <div style=${v.lineViewStyle}>
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 12px; height: 44px; flex-shrink: 0">
+      <button onClick=${this.backToStrings} class="navbtn">${CHEVRON}<span>도착 순서</span></button>
+      <div style="font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 14px; background: #FFFFFF; color: #3A3A3C; max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">내 정류장 · ${v.myName}</div>
+    </div>
+    <div style="height: 70px; flex-shrink: 0; padding: 0 20px; display: flex; flex-direction: column; justify-content: center; gap: 4px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="font-size: 32px; font-weight: 800; letter-spacing: -0.5px">${v.routeNo}</span>
+        <span style=${'font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: ' + v.soft + '; color: ' + v.accent}>${v.trackedLabel}</span>
+      </div>
+      <div style="font-size: 14px; color: #3A3A3C">${v.fromName} → ${v.toName} 방면</div>
+    </div>
+    <div style="height: 96px; flex-shrink: 0; box-sizing: border-box; margin: 0 16px; padding: 12px 16px; border-radius: 18px; background: #FFFFFF; display: flex; align-items: center; gap: 14px">
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+        <div class="ell" style="font-size: 12px; font-weight: 600; color: #6C6C70">${v.statusLabel}</div>
+        <div class="ell" style="font-size: 20px; font-weight: 700; letter-spacing: -0.2px">${v.nextName} · ${v.etaText}</div>
+        <div class="ell" style="font-size: 13px; color: #6C6C70">${v.myLine}</div>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0">
+        <div style="font-size: 11px; color: #6C6C70">내 정류장 탑승</div>
+        <div style=${v.trackPctStyle}>${v.trackPct}</div>
+      </div>
+    </div>
+    <div onPointerDown=${this.down} onPointerMove=${this.move} onPointerUp=${this.up} onPointerCancel=${this.up} style="position: relative; flex-shrink: 0; width: 390px; height: 262px; background: #FFFFFF; border-top: 0.5px solid #D1D1D6; border-bottom: 0.5px solid #D1D1D6; overflow: hidden; touch-action: none; cursor: grab; user-select: none">
+      <div style=${v.panStyle}>
+        <div style=${v.innerStyle}>
+          <div style=${'position: absolute; left: 0; top: 130px; height: 6px; border-radius: 3px; background: #E5E5EA; width: ' + v.lineW + 'px'}></div>
+          <div style=${v.passedStyle}></div>
+          ${v.stopItems.map(function (s, i) {
+            return html`<${Fragment} key=${'st' + i}>
+              <div style=${s.dotStyle}></div>
+              <div style=${s.labelWrapStyle}>
+                <div style=${s.labelStyle}>${s.name}</div>
+                ${s.tag ? html`<div style=${s.tagStyle}>${s.tag}</div>` : null}
+                ${s.hasProb ? html`<div style=${s.probStyle}>탑승 ${s.prob}</div>` : null}
+              </div>
+            </${Fragment}>`;
+          })}
+          ${v.ghosts.map(function (g) { return html`<div key=${'g' + g.id} style=${g.style}>${BUS_SIDE('#8E8E93', 36, 24, '#48484A')}</div>`; })}
+        </div>
+        <div style=${v.myBusLabelStyle}>
+          <div style="font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 12px; background: #1C1C1E; color: #FFFFFF; white-space: nowrap">내 버스 · ${v.busState}</div>
+        </div>
+        <div style=${v.myBusStyle}>${BUS_SIDE(v.accent, 60, 42)}</div>
+      </div>
+      <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 34px; background: linear-gradient(90deg, #FFFFFF, rgba(255,255,255,0)); pointer-events: none"></div>
+      <div style="position: absolute; right: 0; top: 0; bottom: 0; width: 34px; background: linear-gradient(270deg, #FFFFFF, rgba(255,255,255,0)); pointer-events: none"></div>
+      <div style="position: absolute; left: 12px; bottom: 8px; font-size: 11px; font-weight: 600; color: #6C6C70; pointer-events: none">‹ 이전 ${v.hiddenLeft}개</div>
+      <div style="position: absolute; right: 12px; bottom: 8px; font-size: 11px; font-weight: 600; color: #6C6C70; pointer-events: none">다음 ${v.hiddenRight}개 ›</div>
+    </div>
+    <div style="padding: 0 16px; min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 8px">
+      <div style="font-size: 13px; color: #6C6C70">${v.viewLabel}</div>
+      ${v.panned ? html`<button onClick=${this.goBus} style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 18px; background: #007AFF; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer">내 버스로</button>` : null}
+    </div>
+    <div style="margin: 0 16px; padding: 14px 16px 12px; border-radius: 18px; background: #FFFFFF; display: flex; flex-direction: column; gap: 12px">
+      <div style="position: relative; width: 326px; height: 18px">
+        <div style="position: absolute; left: 0; right: 0; top: 7px; height: 4px; border-radius: 2px; background: #E5E5EA"></div>
+        <div style=${'position: absolute; top: 0; width: 2px; height: 18px; background: #1C1C1E; left: ' + v.ovMyX + 'px'}></div>
+        <div style=${v.ovWindowStyle}></div>
+        <div style=${'position: absolute; top: 3px; left: ' + v.ovBusX + 'px; width: 12px; height: 12px; border-radius: 6px; background: ' + v.accent + '; border: 2px solid #FFFFFF; box-sizing: border-box; box-shadow: 0 0 0 1px ' + v.accent}></div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+        <button onClick=${this.goStart} class="jump"><span>기점</span><span class="jumpsub">${v.fromName}</span></button>
+        <button onClick=${this.goBus} class="jump" style="color: #007AFF; font-weight: 700">내 버스</button>
+        <button onClick=${this.goEnd} class="jump"><span>종점</span><span class="jumpsub">${v.toName}</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div style=${v.flyStyle}>
+    <span style=${v.flyTopStyle}>${BUS_TOP(v.accent)}</span>
+    <span style=${v.flySideStyle}>${BUS_SIDE(v.accent, 60, 42)}</span>
+  </div>
+</div>`;
+  }
+
+  render() {
+    var s = this.state.screen;
+    return s === 'loading' ? this.renderLoading() : s === 'select' ? this.renderSelect() : this.renderLive();
+  }
+}
+
+function fit() {
+  var stage = document.getElementById('stage'), phone = document.getElementById('phone');
+  var pad = window.innerWidth < 500 ? 0 : 32;
+  var s = Math.min((window.innerWidth - pad) / 390, (window.innerHeight - pad) / 844, 1.25);
+  window.__scale = s;
+  phone.style.transform = 'scale(' + s + ')';
+  stage.style.width = (390 * s) + 'px';
+  stage.style.height = (844 * s) + 'px';
+}
+window.addEventListener('resize', fit);
+fit();
+preact.render(h(App, null), document.getElementById('phone'));
+})();
+</script>
+</body>
+</html>
