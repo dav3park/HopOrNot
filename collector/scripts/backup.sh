@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 매일 DB 백업. crontab 예시 (매일 04:10):
-#   10 4 * * * /home/ubuntu/bus-collector/scripts/backup.sh >> /home/ubuntu/backups/backup.log 2>&1
+#   10 4 * * * /home/ubuntu/HopOrNot/collector/scripts/backup.sh >> /home/ubuntu/backups/backup.log 2>&1
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
