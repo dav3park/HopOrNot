@@ -42,10 +42,12 @@ var h = preact.h, Fragment = preact.Fragment, Component = preact.Component;
 var html = htm.bind(h);
 
 var SP = 110, C = 195, HALF = 195 / 110;
-var FB = 780, FT = 396, SX0 = 146, SXW = 228;
+var FB = 788, FT = 462, SX0 = 146, SXW = 228;
 var BOUNCE = 'cubic-bezier(.34,1.56,.64,1)';
 var TX = 195, TY = 403.5, PS = 1.98;
-var MIN_PER_STOP = 2, WALK_PER_STOP = 4, TH = 0.7;
+var MIN_PER_STOP = 2, WALK_PER_STOP = 4, TH = 0.7, CAP = 45, LOAD = 1.9;
+var LEVELS = [1, 5, 10];
+var DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 var INIT = [0.92, 0.72, 0.47, 0.33, 0.19, 0.05];
 var FULL = [0.6, 0.5, 0.95, 0.9, 0.42, 0.2];
 var ROUTES = {
@@ -54,9 +56,9 @@ var ROUTES = {
   '1112': { kind: '직행좌석', color: '#E5332A', soft: '#FDECEB', trail: 'rgba(229,51,42,0.45)', stops: ['경희대학교', '경희대정문', '영통역', '신갈오거리', '수지구청', '판교IC', '잠실역', '잠실대교남단', '강변역'] }
 };
 var SELECT_ROUTES = [
-  { no: '5100', running: 4, eta: '3분', advice: '1대 보내면 탑승 확률 82%' },
-  { no: 'M5107', running: 3, eta: '7분', advice: '이번 버스 탑승 확률 76%' },
-  { no: '1112', running: 2, eta: '12분', advice: '2대 보내면 탑승 확률 71%' }
+  { no: '5100', running: 4, eta: '3분', seats: 14, advice: '1대 보내면 도착 시 1석 이상 82%' },
+  { no: 'M5107', running: 3, eta: '7분', seats: 22, advice: '이번 버스 도착 시 1석 이상 76%' },
+  { no: '1112', running: 2, eta: '12분', seats: 6, advice: '2대 보내면 도착 시 1석 이상 71%' }
 ];
 function isInt(p) { return Math.abs(p - Math.round(p)) < 1e-6; }
 function bub(d) { return 1 + 0.45 * Math.exp(-d * d * 1.6); }
@@ -68,10 +70,29 @@ function makeBuses(n) {
 }
 function defMy(n) { return Math.round((n - 1) * 0.55); }
 function ordinal(r) { return r === 0 ? '이번' : r === 1 ? '다음' : (r + 1) + '번째'; }
-function prob(b, i, span) { var f = FULL[(b.id + b.gen * 2) % FULL.length]; return Math.max(0.03, Math.min(0.98, 0.98 - f * (i / span) * 1.35)); }
+function meanSeats(b, i, span) { return CAP * (1 - FULL[(b.id + b.gen * 2) % FULL.length] * (i / span) * LOAD); }
+function seatsAt(b, i, span) { return Math.max(0, Math.min(CAP, Math.round(meanSeats(b, i, span)))); }
+function seatText(n) { return n > 0 ? n + '석' : '만석'; }
+function prob(b, i, span, k) {
+  if (i <= b.pos + 1e-6) return seatsAt(b, i, span) >= k ? 1 : 0;
+  var m = meanSeats(b, i, span), sd = Math.min(0.1 + 0.8 * Math.max(0, i - b.pos), 1 + 0.35 * Math.max(m, 0));
+  return Math.max(0.02, Math.min(0.98, 1 / (1 + Math.exp(1.702 * (k - 0.5 - m) / sd))));
+}
+function hash01(s) { var x = 2166136261; for (var i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); } x = Math.imul(x ^ (x >>> 15), 2246822507); x = Math.imul(x ^ (x >>> 13), 3266489909); return ((x ^ (x >>> 16)) >>> 0) / 4294967296; }
+function historyRows(route, stop, span, mode) {
+  var now = Date.now(), rows = [];
+  for (var i = 0; i < 12; i++) {
+    var t = new Date(now + (mode === 'week' ? 66 - i * 11 : -4 - i * 11) * 60000);
+    var f = 0.2 + 0.8 * hash01(route + mode + i);
+    rows.push({ time: String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'), seats: Math.max(0, Math.round(CAP * (1 - f * (stop / span) * LOAD))), near: mode === 'week' && i === 6 });
+  }
+  return rows;
+}
 function pct(p) { return Math.round(p * 100) + '%'; }
 function fillOf(p) { return p >= 0.7 ? '#1F5FBF' : p >= 0.4 ? '#7FA6DD' : '#F0A04B'; }
 function textOf(p) { return p >= 0.7 ? '#1F5FBF' : p >= 0.4 ? '#4A6FA5' : '#B4570A'; }
+function tabStyle(on) { return 'min-height: 30px; border: 0; border-radius: 8px; font-size: 14px; cursor: pointer; ' + (on ? 'background: #FFFFFF; color: #1C1C1E; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.12);' : 'background: transparent; color: #3A3A3C; font-weight: 500;'); }
+function cellOf(p) { return p >= 0.7 ? 'background: #1F5FBF; color: #FFFFFF;' : p >= 0.4 ? 'background: #BCD1EE; color: #173A6B;' : 'background: #FBE3C8; color: #8A4300;'; }
 
 var BUS_TOP = function (color) {
   return html`<svg width="30" height="44" viewBox="0 0 30 44" aria-hidden="true"><rect x="0" y="5" width="4" height="3" rx="1" fill="#1C1C1E"></rect><rect x="26" y="5" width="4" height="3" rx="1" fill="#1C1C1E"></rect><rect x="3" y="1" width="24" height="42" rx="6" fill=${color}></rect><rect x="6" y="3.5" width="18" height="7" rx="2.5" fill="#FFFFFF" opacity="0.92"></rect><rect x="7" y="14" width="16" height="21" rx="2" fill="#000000" opacity="0.14"></rect><rect x="11" y="18" width="8" height="5" rx="1" fill="#FFFFFF" opacity="0.4"></rect><rect x="8" y="38.5" width="14" height="2.5" rx="1.2" fill="#FFFFFF" opacity="0.55"></rect></svg>`;
@@ -87,7 +108,7 @@ class App extends Component {
   constructor(props) {
     super(props);
     var n = ROUTES['5100'].stops.length;
-    this.state = { screen: 'loading', route: '5100', buses: makeBuses(n), myStop: defMy(n), phase: 'strings', stage: 0, tracked: null, fromX: 0, fromY: 0, pan: 0, dragging: false };
+    this.state = { screen: 'loading', route: '5100', buses: makeBuses(n), myStop: defMy(n), phase: 'strings', stage: 0, tracked: null, fromX: 0, fromY: 0, pan: 0, dragging: false, view: 'now', need: 1, histMode: 'today' };
     this.drag = null;
     this.timers = [];
     var self = this;
@@ -98,13 +119,13 @@ class App extends Component {
     this.goStart = function () { self.setState({ pan: self.trackedPos() * SP }); };
     this.goEnd = function () { self.setState({ pan: (self.trackedPos() - (self.count() - 1)) * SP }); };
     this.backToStrings = function () { self.clearTimers(); self.setState({ phase: 'strings', stage: 0, pan: 0 }); };
-    this.backToSelect = function () { self.clearTimers(); self.setState({ screen: 'select', phase: 'strings', stage: 0, pan: 0 }); };
+    this.backToSelect = function () { self.clearTimers(); self.setState({ screen: 'select', phase: 'strings', stage: 0, pan: 0, view: 'now' }); };
     this.skipLoading = function () { self.setState({ screen: 'select' }); };
   }
   openRoute(no) {
     var nn = ROUTES[no].stops.length;
     this.clearTimers();
-    this.setState({ screen: 'live', route: no, buses: makeBuses(nn), myStop: defMy(nn), phase: 'strings', stage: 0, tracked: null, pan: 0 });
+    this.setState({ screen: 'live', route: no, buses: makeBuses(nn), myStop: defMy(nn), phase: 'strings', stage: 0, tracked: null, pan: 0, view: 'now' });
   }
   count() { return ROUTES[this.state.route].stops.length; }
   trackedBus() { var id = this.state.tracked, bs = this.state.buses; for (var i = 0; i < bs.length; i++) if (bs[i].id === id) return bs[i]; return bs[0]; }
@@ -144,7 +165,7 @@ class App extends Component {
   vals() {
     var self = this, st = this.state, key = st.route, R = ROUTES[key];
     var stops = R.stops, n = stops.length, span = n - 1, accent = R.color;
-    var my = Math.min(st.myStop, span), phase = st.phase;
+    var my = Math.min(st.myStop, span), phase = st.phase, need = st.need;
     var buses = st.buses;
 
     var coming = buses.filter(function (b) { return b.pos <= my + 1e-6; }).sort(function (a, b) { return b.pos - a.pos; });
@@ -159,14 +180,15 @@ class App extends Component {
     var etaOf = function (b) { var rem = my - b.pos; if (rem <= 1e-6) return '도착'; if (rem <= 0.3) return '곧'; return Math.ceil(rem * MIN_PER_STOP) + '분'; };
 
     var waitR = -1, bestR = -1, bestP = -1;
-    coming.forEach(function (b, r) { var p = prob(b, my, span); if (waitR < 0 && p >= TH) waitR = r; if (p > bestP) { bestP = p; bestR = r; } });
+    coming.forEach(function (b, r) { var p = prob(b, my, span, need); if (waitR < 0 && p >= TH) waitR = r; if (p > bestP) { bestP = p; bestR = r; } });
     var waitHead, waitSub, waitP;
     if (waitR >= 0) {
-      var wb = coming[waitR]; waitP = prob(wb, my, span);
+      var wb = coming[waitR]; waitP = prob(wb, my, span, need);
       waitHead = waitR === 0 ? '이번 버스 타세요' : waitR + '대 보내고 ' + ordinal(waitR) + ' 버스';
-      waitSub = (waitR === 0 ? '' : '앞 ' + waitR + '대는 만석 예상 · ') + '약 ' + Math.max(0, Math.ceil(etaMin(wb, my))) + '분 후 도착';
+      var wMin = Math.ceil(etaMin(wb, my));
+      waitSub = '지금 ' + seatText(seatsAt(wb, wb.pos, span)) + ' · ' + (wMin > 0 ? '약 ' + wMin + '분 후 도착' : '지금 도착');
     } else if (cnt > 0) {
-      waitP = bestP; waitHead = '오는 버스 모두 만석 예상'; waitSub = '그나마 ' + ordinal(bestR) + ' 버스가 제일 나음';
+      waitP = bestP; waitHead = need === 1 ? '오는 버스 모두 만석 예상' : '오는 버스 모두 ' + need + '석 미만 예상'; waitSub = '그나마 ' + ordinal(bestR) + ' 버스가 제일 나음';
     } else { waitP = 0; waitHead = '오는 버스 없음'; waitSub = '잠시 후 다시 예측'; }
 
     var mv = null;
@@ -176,11 +198,11 @@ class App extends Component {
       for (var j = my - 1; j >= Math.ceil(b.pos - 1e-6); j--) {
         var walk = (my - j) * WALK_PER_STOP, arrive = etaMin(b, j);
         if (walk > arrive) break;
-        var p = prob(b, j, span);
+        var p = prob(b, j, span, need);
         if (p >= TH && (!mv || arrive < mv.arrive)) { mv = { r: r, j: j, p: p, walk: walk, arrive: arrive }; break; }
       }
     });
-    var moveText = mv ? '또는 ' + stops[mv.j] + '까지 ' + (my - mv.j) + '정거장 걸어가면 ' + ordinal(mv.r) + ' 버스 ' + pct(mv.p) + ' (도보 ' + mv.walk + '분)' : '거슬러 가도 더 빨리 탈 수 있는 버스 없음';
+    var moveText = mv ? '또는 ' + stops[mv.j] + '까지 걸어가면 ' + ordinal(mv.r) + ' 버스 ' + need + '석 이상 ' + pct(mv.p) + ' · 도보 ' + mv.walk + '분' : '거슬러 가도 더 빨리 탈 수 있는 버스 없음';
 
     var frets = stops.map(function (name, i) {
       var isMy = i === my, above = i > my, isMove = !!mv && mv.j === i;
@@ -188,17 +210,22 @@ class App extends Component {
         name: name, isMy: isMy, isMove: isMove, aria: name + ' 내 정류장으로 설정',
         pick: function () { self.setState({ myStop: i }); },
         lineStyle: 'position: absolute; left: 140px; width: 236px; top: ' + (fy(i) - (isMy ? 1.5 : 0.5)) + 'px; height: ' + (isMy ? 3 : 1) + 'px; background: ' + (isMy ? accent : isMove ? '#1C1C1E' : '#E5E5EA') + ';',
-        btnStyle: 'position: absolute; left: 8px; top: ' + (fy(i) - 21) + 'px; width: 130px; height: 42px; padding: 0 8px; border: 0; background: transparent; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left;',
+        btnStyle: 'position: absolute; left: 8px; top: ' + (fy(i) - Math.min(42, gap) / 2) + 'px; width: 130px; height: ' + Math.min(42, gap) + 'px; padding: 0 8px; border: 0; background: transparent; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; text-align: left;',
         nameStyle: 'font-size: 13px; line-height: 16px; max-width: 114px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ' + (isMy ? 'font-weight: 800; color: ' + accent + ';' : isMove ? 'font-weight: 800; color: #1C1C1E;' : above ? 'font-weight: 500; color: #6C6C70;' : 'font-weight: 600; color: #1C1C1E;')
       };
     });
 
     var strings = coming.map(function (b, r) {
-      var x = sx(r), p = prob(b, my, span), rec = r === waitR;
+      var x = sx(r), rec = r === waitR, cw = colW - 4;
       return {
-        id: b.id, label: rec ? '추천' : ordinal(r), eta: etaOf(b), pct: pct(p),
-        pctStyle: 'font-size: 12px; font-weight: 800; color: ' + textOf(p) + ';',
-        headStyle: 'position: absolute; top: 332px; left: ' + (x - colW / 2) + 'px; width: ' + colW + 'px; height: 54px; box-sizing: border-box; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: left .45s ease, width .45s ease; ' + (rec ? 'border: 1.5px solid #1F5FBF; background: #EAF1FB;' : 'border: 1.5px solid transparent;'),
+        id: b.id, label: rec ? '추천' : ordinal(r), rec: rec, eta: etaOf(b), seats: seatText(seatsAt(b, b.pos, span)),
+        cells: LEVELS.map(function (k, li) {
+          var p = prob(b, my, span, k);
+          return { k: k, pct: pct(p), style: 'position: absolute; top: ' + (383 + li * 22) + 'px; left: ' + (x - cw / 2) + 'px; width: ' + cw + 'px; height: 20px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 800; font-variant-numeric: tabular-nums; transition: left .45s ease, width .45s ease; ' + cellOf(p) };
+        }),
+        headStyle: 'position: absolute; top: 318px; left: ' + (x - colW / 2) + 'px; width: ' + colW + 'px; height: 34px; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: left .45s ease, width .45s ease;',
+        seatStyle: 'position: absolute; top: 354px; left: ' + (x - colW / 2) + 'px; width: ' + colW + 'px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #FFFFFF; font-variant-numeric: tabular-nums; transition: left .45s ease, width .45s ease;',
+        recStyle: 'position: absolute; top: 315px; left: ' + (x - colW / 2 - 1) + 'px; width: ' + (colW + 2) + 'px; height: 137px; box-sizing: border-box; border: 2px solid #1F5FBF; border-radius: 10px; pointer-events: none; transition: left .45s ease, width .45s ease;',
         highStyle: 'position: absolute; top: ' + (FT - 8) + 'px; height: ' + Math.max(0, fy(my) - FT + 8) + 'px; left: ' + (x - 0.5) + 'px; width: 1px; background: #E5E5EA; transition: left .45s ease;',
         lowStyle: 'position: absolute; top: ' + fy(my) + 'px; height: ' + (FB + 12 - fy(my)) + 'px; left: ' + (x - 1) + 'px; width: 2px; background: #AEAEB2; transition: left .45s ease;'
       };
@@ -208,7 +235,7 @@ class App extends Component {
     coming.forEach(function (b, r) {
       var x = sx(r);
       for (var i = Math.ceil(b.pos - 1e-6); i <= my; i++) {
-        var p = prob(b, i, span), s = i === my ? 14 : 10;
+        var p = prob(b, i, span, need), s = i === my ? 14 : 10;
         nodes.push({ key: b.id + '-' + i, style: 'position: absolute; left: ' + (x - s / 2) + 'px; top: ' + (fy(i) - s / 2) + 'px; width: ' + s + 'px; height: ' + s + 'px; border-radius: ' + s + 'px; background: ' + fillOf(p) + '; box-shadow: 0 0 0 2px #FFFFFF; transition: left .45s ease;' });
       }
     });
@@ -226,8 +253,8 @@ class App extends Component {
       var hideForFly = st.tracked === b.id && phase !== 'strings';
       var stopped = isInt(b.pos);
       return {
-        id: b.id, color: accent, trail: R.trail, stopped: stopped,
-        aria: (vis ? ordinal(r) + ' 버스, 내 정류장 탑승 확률 ' + pct(prob(b, my, span)) : '버스') + ', 실시간 노선 보기',
+        id: b.id, color: accent, trail: R.trail, stopped: stopped, seats: seatsAt(b, Math.min(b.pos, span), span),
+        aria: (vis ? ordinal(r) + ' 버스, 지금 ' + seatText(seatsAt(b, b.pos, span)) + ', 내 정류장 도착 시 ' + need + '석 이상 남을 확률 ' + pct(prob(b, my, span, need)) : '버스') + ', 실시간 노선 보기',
         pick: function () { self.pickBus(b.id, x, y); },
         style: 'position: absolute; left: ' + (x - 22) + 'px; top: ' + (y - 22) + 'px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; opacity: ' + (vis && !hideForFly ? 1 : 0) + '; pointer-events: ' + (vis ? 'auto' : 'none') + '; transition: ' + (b.jump ? 'opacity .6s ease' : 'left .45s ease, top 3s linear, opacity .4s ease') + ';'
       };
@@ -237,8 +264,26 @@ class App extends Component {
       var on = no === key;
       return {
         no: no, pick: function () { self.openRoute(no); },
-        style: 'min-height: 30px; border: 0; border-radius: 8px; font-size: 14px; cursor: pointer; ' + (on ? 'background: #FFFFFF; color: #1C1C1E; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.12);' : 'background: transparent; color: #3A3A3C; font-weight: 500;')
+        style: tabStyle(on)
       };
+    });
+    var views = [['now', '도착 예측'], ['history', '지난 기록']].map(function (t) {
+      return { id: t[0], label: t[1], pick: function () { self.setState({ view: t[0] }); }, style: tabStyle(st.view === t[0]) };
+    });
+    var levels = LEVELS.map(function (k, li) {
+      var on = k === need;
+      return {
+        k: k, on: on, pick: function () { self.setState({ need: k }); },
+        style: 'position: absolute; left: 74px; width: 308px; top: ' + (382 + li * 22) + 'px; height: 22px; padding: 0 0 0 6px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; text-align: left; font-size: 11px; color: #1C1C1E; font-weight: ' + (on ? 800 : 500) + '; box-shadow: ' + (on ? 'inset 0 0 0 1.5px #1F5FBF' : 'none') + ';'
+      };
+    });
+    var histMode = st.histMode;
+    var histRows = historyRows(key, my, span, histMode);
+    var histFull = histRows.filter(function (h) { return h.seats === 0; }).length;
+    var histAvg = Math.round(histRows.reduce(function (a, h) { return a + h.seats; }, 0) / histRows.length);
+    var histFive = histRows.filter(function (h) { return h.seats >= 5; }).length;
+    var histTabs = [['today', '오늘'], ['week', '지난주 ' + DAYS[new Date().getDay()] + '요일']].map(function (t) {
+      return { id: t[0], label: t[1], pick: function () { self.setState({ histMode: t[0] }); }, style: tabStyle(histMode === t[0]) };
     });
 
     var tb = this.trackedBus();
@@ -251,23 +296,24 @@ class App extends Component {
     var mins = Math.max(1, Math.ceil((nextIdx - pos) * MIN_PER_STOP));
     var trackedRank = rankOf[tb.id];
     var toMy = my - pos;
-    var tP = prob(tb, my, span);
+    var tSeats = seatsAt(tb, pos, span);
+    var trackProbs = LEVELS.map(function (k) { var p = prob(tb, my, span, k); return { k: k, pct: pct(p), style: 'font-size: 19px; font-weight: 800; letter-spacing: -0.3px; font-variant-numeric: tabular-nums; color: ' + textOf(p) + ';' }; });
     var myLine = toMy > 1e-6 ? '내 정류장까지 ' + Math.ceil(toMy - 1e-6) + '정거장 · 약 ' + Math.ceil(toMy * MIN_PER_STOP) + '분' : (Math.abs(toMy) < 1e-6 ? '내 정류장 도착' : '내 정류장 지남 · 종점까지 ' + (span - Math.floor(pos + 1e-6)) + '정거장');
 
     var stopItems = stops.map(function (name, i) {
       var passed = i < pos - 1e-6, here = atStop && i === cur;
       var s = bub(Math.abs(i - pos + pan / SP));
       var tag = i === my ? '내 정류장' : i === 0 ? '기점' : i === span ? '종점' : '';
-      var p = prob(tb, i, span);
+      var ahead = i > pos + 1e-6;
       var dot = 'position: absolute; top: 125px; left: ' + (i * SP - 8) + 'px; width: 16px; height: 16px; border-radius: 8px; box-sizing: border-box; transform: scale(' + s.toFixed(3) + '); transition: transform .45s ' + BOUNCE + '; ';
       dot += here ? 'background: ' + accent + '; border: 3px solid #FFFFFF; box-shadow: 0 0 0 2px ' + accent + ';' : passed ? 'background: #C7C7CC; border: 3px solid #FFFFFF;' : 'background: #FFFFFF; border: 3px solid ' + accent + ';';
       var lab = 'font-size: 12px; line-height: 15px; text-align: center; word-break: keep-all; ';
       lab += here ? 'font-weight: 700; color: ' + accent + ';' : passed ? 'font-weight: 500; color: #6C6C70;' : (tag ? 'font-weight: 700; color: #1C1C1E;' : 'font-weight: 500; color: #1C1C1E;');
       return {
-        name: name, labelStyle: lab, dotStyle: dot, tag: tag, hasProb: !passed, prob: pct(p),
-        probStyle: 'font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 5px; white-space: nowrap; color: ' + textOf(p) + '; background: ' + (p >= 0.7 ? '#EAF1FB' : p >= 0.4 ? '#EEF2F8' : '#FDF1E4') + ';',
+        name: name, labelStyle: lab, dotStyle: dot, tag: tag, ahead: ahead, passed: passed, pastSeats: seatText(seatsAt(tb, i, span)),
+        probs: LEVELS.map(function (k) { var p = prob(tb, i, span, k); return { k: k, pct: pct(p), style: 'font-weight: 800; font-variant-numeric: tabular-nums; color: ' + textOf(p) + ';' }; }),
         tagStyle: 'font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px; color: #FFFFFF; white-space: nowrap; background: ' + (i === my ? accent : '#1C1C1E') + ';',
-        labelWrapStyle: 'position: absolute; top: 152px; left: ' + (i * SP - 48) + 'px; width: 96px; display: flex; flex-direction: column; align-items: center; gap: 4px; transform-origin: 50% 0; transform: scale(' + Math.min(s, 1.3).toFixed(3) + '); transition: transform .45s ' + BOUNCE + ';'
+        labelWrapStyle: 'position: absolute; top: 152px; left: ' + (i * SP - 48) + 'px; width: 96px; display: flex; flex-direction: column; align-items: center; gap: 4px; transform-origin: 50% 0; transform: scale(' + Math.min(s, 1.15).toFixed(3) + '); transition: transform .45s ' + BOUNCE + ';'
       };
     });
 
@@ -291,18 +337,18 @@ class App extends Component {
       fromName: stops[0], toName: stops[span], myName: stops[my],
       comingText: cnt > 0 ? cnt + '대 오는 중' : '오는 버스 없음',
       waitHead: waitHead, waitSub: waitSub, waitPct: cnt > 0 ? pct(waitP) : '-',
+      histNote: st.histMode === 'week' ? ' · 회색 줄이 지금 시각' : '', need: need, views: views, levels: levels, view: st.view, histRows: histRows, histTabs: histTabs, histFull: histFull, histAvg: histAvg, histFive: histFive,
       waitPctStyle: 'font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: ' + textOf(waitP) + ';',
       moveText: moveText, frets: frets, strings: strings, nodes: nodes, marks: marks, fleet: fleet,
       stringsViewStyle: 'position: absolute; inset: 0; opacity: ' + (phase === 'strings' ? 1 : 0) + '; pointer-events: ' + (phase === 'strings' ? 'auto' : 'none') + '; transition: opacity .35s ease;',
-      lineViewStyle: 'position: absolute; inset: 0; box-sizing: border-box; padding-top: 54px; display: flex; flex-direction: column; gap: 14px; opacity: ' + (phase === 'strings' ? 0 : 1) + '; pointer-events: ' + (lineVisible ? 'auto' : 'none') + '; transition: opacity .45s ease ' + (phase === 'strings' ? '0s' : '.15s') + ';',
+      lineViewStyle: 'position: absolute; inset: 0; box-sizing: border-box; padding-top: 54px; display: flex; flex-direction: column; gap: 8px; opacity: ' + (phase === 'strings' ? 0 : 1) + '; pointer-events: ' + (lineVisible ? 'auto' : 'none') + '; transition: opacity .45s ease ' + (phase === 'strings' ? '0s' : '.15s') + ';',
       flyStyle: 'position: absolute; left: ' + (fx - 15) + 'px; top: ' + (fyy - 22) + 'px; width: 30px; height: 44px; pointer-events: none; z-index: 5; opacity: ' + (flying ? 1 : 0) + '; transform: rotate(' + (stage >= 1 ? 90 : 0) + 'deg) scale(' + (stage >= 1 ? PS : 1) + '); transition: ' + (stage >= 1 && flying ? 'left .62s cubic-bezier(.5,0,.2,1), top .62s cubic-bezier(.5,0,.2,1), transform .62s ' + BOUNCE : 'none') + ';',
       flyTopStyle: 'position: absolute; left: 0; top: 0; opacity: ' + (stage >= 2 ? 0 : 1) + '; transition: opacity .25s ease;',
       flySideStyle: 'position: absolute; left: -15px; top: 1px; opacity: ' + (stage >= 2 ? 1 : 0) + '; transform: rotate(-90deg) scale(' + (stage >= 2 ? 0.732 : 0.6) + '); transition: opacity .2s ease, transform .3s ' + BOUNCE + ';',
       trackedLabel: (trackedRank !== undefined ? ordinal(trackedRank) + ' 버스' : '지나간 버스') + ' 추적 중',
       statusLabel: atEnd ? '종점 도착' : atStop ? stops[cur] + ' 정차 중 · 다음 정류장' : '다음 정류장',
       nextName: stops[nextIdx], etaText: atEnd ? '도착' : (nextIdx - pos) <= 0.3 ? '곧 도착' : mins + '분',
-      myLine: myLine, trackPct: toMy >= -1e-6 ? pct(tP) : '-',
-      trackPctStyle: 'font-size: 28px; font-weight: 800; letter-spacing: -0.5px; color: ' + (toMy >= -1e-6 ? textOf(tP) : '#6C6C70') + ';',
+      myLine: myLine, tSeats: seatText(tSeats), trackProbs: trackProbs, beforeMy: toMy >= -1e-6,
       busState: atEnd ? '종점 도착' : atStop ? stops[cur] + ' 정차 중' : stops[nextIdx] + ' 가는 중',
       panStyle: 'position: absolute; inset: 0; transform: translateX(' + pan + 'px); transition: ' + (st.dragging ? 'none' : 'transform 0.35s ease') + ';',
       innerStyle: 'position: absolute; left: 0; top: 0; width: 0; height: 100%; transform: translateX(' + (C - pos * SP) + 'px); transition: ' + (tb.jump || flying ? 'none' : 'transform 3s linear') + ';',
@@ -313,7 +359,7 @@ class App extends Component {
       myBusLabelStyle: 'position: absolute; left: 0; width: 390px; top: 22px; display: flex; justify-content: center; pointer-events: none; opacity: ' + (lineVisible ? 1 : 0) + '; transform: translateY(' + ((busScale - 1.45) * -40).toFixed(1) + 'px); transition: opacity .3s ease, transform .45s ' + BOUNCE + ';',
       hiddenLeft: Math.max(0, Math.ceil(vc - HALF)), hiddenRight: Math.max(0, span - Math.floor(vc + HALF)),
       panned: Math.abs(pan) > 4,
-      viewLabel: d === 0 ? '좌우로 밀어서 정류장별 탑승 확률 보기' : d > 0 ? '내 버스보다 ' + d + '정류장 뒤를 보는 중' : '내 버스보다 ' + (-d) + '정류장 앞을 보는 중',
+      viewLabel: d === 0 ? '좌우로 밀어서 정류장별 잔여석 예측 보기' : d > 0 ? '내 버스보다 ' + d + '정류장 뒤를 보는 중' : '내 버스보다 ' + (-d) + '정류장 앞을 보는 중',
       ovBusX: pos / span * W - 6, ovMyX: my / span * W - 1,
       ovWindowStyle: 'position: absolute; top: 0; height: 18px; border-radius: 9px; background: rgba(0,122,255,0.12); border: 1.5px solid #007AFF; box-sizing: border-box; left: ' + winL + 'px; width: ' + Math.max(18, winR - winL) + 'px; transition: ' + (st.dragging ? 'none' : 'left 0.35s ease, width 0.35s ease') + ';'
     };
@@ -333,7 +379,7 @@ class App extends Component {
   </div>
   <div style="position: absolute; bottom: 72px; display: flex; flex-direction: column; align-items: center; gap: 12px">
     <div class="spinner"></div>
-    <div style="font-size: 13px; color: #6C6C70">정류장별 탑승 확률 예측 중</div>
+    <div style="font-size: 13px; color: #6C6C70">도착 시 잔여석 예측 중</div>
   </div>
 </button>`;
   }
@@ -359,7 +405,7 @@ class App extends Component {
             <span style=${'font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: ' + R.soft + '; color: ' + R.color}>${R.kind}</span>
           </div>
           <div style="font-size: 14px; color: #3A3A3C">${st[0]} → ${st[st.length - 1]}</div>
-          <div style="font-size: 12px; color: #6C6C70">운행 중 ${r.running}대 · 가장 가까운 버스 ${r.eta}</div>
+          <div style="font-size: 12px; color: #6C6C70">운행 중 ${r.running}대 · 가장 가까운 버스 ${r.eta} · 지금 ${r.seats}석</div>
           <div style="font-size: 12px; font-weight: 700; color: #1F5FBF">${r.advice}</div>
         </div>
         <svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="#8E8E93" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2,2 8,8 2,14"></polyline></svg>
@@ -367,40 +413,25 @@ class App extends Component {
     })}
   </div>
   <div style="margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; color: #6C6C70">
-    <span style="width: 8px; height: 8px; border-radius: 4px; background: #34C759"></span><span>실시간 · 탑승 확률은 내 정류장 기준 예측</span>
+    <span style="width: 8px; height: 8px; border-radius: 4px; background: #34C759"></span><span>지금 잔여석은 실측 · 확률은 내 정류장 도착 시 예측</span>
   </div>
 </div>`;
   }
 
-  renderLive() {
-    var v = this.vals();
-    return html`
-<div class="screen" style="background: #F2F2F7">
-  <div style=${v.stringsViewStyle}>
-    <div style="position: absolute; left: 12px; right: 12px; top: 54px; height: 44px; display: flex; align-items: center; justify-content: space-between">
-      <button onClick=${this.backToSelect} class="navbtn">${CHEVRON}<span>노선</span></button>
-      <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6C6C70"><span style="width: 7px; height: 7px; border-radius: 4px; background: #34C759"></span>실시간 · 예측 갱신 중</div>
-    </div>
-    <div style="position: absolute; left: 20px; right: 20px; top: 100px; height: 44px; display: flex; align-items: center; gap: 10px">
-      <span style="font-size: 30px; font-weight: 800; letter-spacing: -0.5px">${v.routeNo}</span>
-      <span style=${'font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: ' + v.soft + '; color: ' + v.accent}>${v.kind}</span>
-      <span style="font-size: 14px; color: #3A3A3C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${v.toName} 방면</span>
-    </div>
-    <div style="position: absolute; left: 16px; right: 16px; top: 150px; height: 36px; box-sizing: border-box; padding: 3px; border-radius: 10px; background: #E3E3E8; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px">
-      ${v.tabs.map(function (t) { return html`<button key=${t.no} onClick=${t.pick} style=${t.style}>${t.no}</button>`; })}
-    </div>
-    <div style="position: absolute; left: 16px; right: 16px; top: 194px; height: 124px; box-sizing: border-box; padding: 12px 14px; border-radius: 18px; background: #FFFFFF; display: flex; flex-direction: column; gap: 8px">
+  renderForecast(v) {
+    return html`<${Fragment}>
+    <div style="position: absolute; left: 16px; right: 16px; top: 190px; height: 114px; box-sizing: border-box; padding: 10px 14px; border-radius: 18px; background: #FFFFFF; display: flex; flex-direction: column; gap: 6px">
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
         <span style="font-size: 12px; font-weight: 600; color: #6C6C70; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">내 정류장 · ${v.myName} · ${v.comingText}</span>
         <span style="font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: #EAF1FB; color: #1F5FBF; white-space: nowrap">AI 판단</span>
       </div>
       <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 10px">
-        <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
-          <span style="font-size: 21px; font-weight: 800; letter-spacing: -0.4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${v.waitHead}</span>
+        <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0">
+          <span style="font-size: 20px; font-weight: 800; letter-spacing: -0.4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${v.waitHead}</span>
           <span style="font-size: 13px; color: #3A3A3C">${v.waitSub}</span>
         </div>
         <div style="display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0">
-          <span style="font-size: 11px; color: #6C6C70">탑승 확률</span>
+          <span style="font-size: 11px; color: #6C6C70">도착 시 ${v.need}석 이상</span>
           <span style=${v.waitPctStyle}>${v.waitPct}</span>
         </div>
       </div>
@@ -410,7 +441,7 @@ class App extends Component {
         <span style="font-size: 13px; color: #1C1C1E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${v.moveText}</span>
       </div>
     </div>
-    <div style="position: absolute; left: 0; right: 0; top: 326px; bottom: 0; background: #FFFFFF; border-top: 0.5px solid #D1D1D6"></div>
+    <div style="position: absolute; left: 0; right: 0; top: 312px; bottom: 0; background: #FFFFFF; border-top: 0.5px solid #D1D1D6"></div>
     ${v.frets.map(function (f, i) {
       return html`<${Fragment} key=${'f' + i}>
         <div style=${f.lineStyle}></div>
@@ -422,37 +453,103 @@ class App extends Component {
       </${Fragment}>`;
     })}
     ${v.strings.map(function (s) {
-      return html`<${Fragment} key=${'s' + s.id}>
+      return html`<${Fragment} key=${'l' + s.id}>
         <div style=${s.highStyle}></div>
         <div style=${s.lowStyle}></div>
-        <div style=${s.headStyle}>
-          <span style="font-size: 11px; font-weight: 600; color: #6C6C70">${s.label}</span>
-          <span style="font-size: 14px; font-weight: 800; letter-spacing: -0.3px; color: #1C1C1E">${s.eta}</span>
-          <span style=${s.pctStyle}>${s.pct}</span>
-        </div>
       </${Fragment}>`;
     })}
+    <div style="position: absolute; left: 16px; top: 318px; width: 124px; height: 34px; display: flex; flex-direction: column; justify-content: center">
+      <span class="ell" style=${'font-size: 13px; font-weight: 800; color: ' + v.accent}>${v.myName}</span>
+      <span style="font-size: 11px; color: #6C6C70">도착 순서</span>
+    </div>
+    <div style="position: absolute; left: 8px; right: 8px; top: 354px; height: 24px; border-radius: 8px; background: #1C1C1E"></div>
+    <div style="position: absolute; left: 16px; top: 354px; height: 24px; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #FFFFFF"><span style="width: 7px; height: 7px; border-radius: 4px; background: #34C759"></span>지금 잔여석</div>
+    <div style="position: absolute; left: 8px; right: 8px; top: 380px; height: 70px; border-radius: 8px; background: #EAF1FB"></div>
+    <div style="position: absolute; left: 16px; top: 380px; height: 70px; display: flex; flex-direction: column; justify-content: center; font-size: 11px; line-height: 15px; font-weight: 700; color: #1F5FBF"><span>도착 시</span><span>남을 확률</span><span style="font-weight: 500">(예측)</span></div>
+    ${v.strings.map(function (s) {
+      return html`<${Fragment} key=${'s' + s.id}>
+        <div style=${s.headStyle}>
+          <span style=${'font-size: 11px; font-weight: ' + (s.rec ? 800 : 600) + '; color: ' + (s.rec ? '#1F5FBF' : '#6C6C70')}>${s.label}</span>
+          <span style="font-size: 14px; font-weight: 800; letter-spacing: -0.3px; color: #1C1C1E">${s.eta}</span>
+        </div>
+        <div style=${s.seatStyle}>${s.seats}</div>
+        ${s.cells.map(function (c) { return html`<div key=${c.k} style=${c.style}>${c.pct}</div>`; })}
+      </${Fragment}>`;
+    })}
+    ${v.levels.map(function (l) { return html`<button key=${l.k} onClick=${l.pick} aria-pressed=${l.on} aria-label=${l.k + '석 이상 기준으로 보기'} style=${l.style}>${l.k}석 이상</button>`; })}
+    ${v.strings.map(function (s) { return s.rec ? html`<div key=${'r' + s.id} style=${s.recStyle}></div>` : null; })}
     ${v.nodes.map(function (nd) { return html`<div key=${nd.key} style=${nd.style}></div>`; })}
     ${v.marks.map(function (m) { return html`<${Fragment} key=${m.key}><div class="ring" style=${m.style}></div><div style=${m.style}></div></${Fragment}>`; })}
     ${v.fleet.map(function (b) {
       return html`<button key=${'b' + b.id} onClick=${b.pick} aria-label=${b.aria} style=${b.style}>
-        ${b.stopped ? html`<${Fragment}>
-          <span class="pulse" style=${'position: absolute; left: 4px; top: -4px; width: 36px; height: 52px; border-radius: 12px; border: 2px solid ' + b.color + '; box-sizing: border-box'}></span>
-          <span style="position: absolute; left: 50%; top: 46px; transform: translateX(-50%); font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 5px; background: #1C1C1E; color: #FFFFFF; white-space: nowrap">정차</span>
-        </${Fragment}>` : html`<${Fragment}>
+        ${b.stopped ? html`<span class="pulse" style=${'position: absolute; left: 4px; top: -4px; width: 36px; height: 52px; border-radius: 12px; border: 2px solid ' + b.color + '; box-sizing: border-box'}></span>` : html`<${Fragment}>
           <span style=${'position: absolute; left: 13px; top: 44px; width: 4px; height: 14px; border-radius: 2px; background: linear-gradient(180deg, ' + b.trail + ', rgba(255,255,255,0))'}></span>
           <span style=${'position: absolute; left: 27px; top: 44px; width: 4px; height: 14px; border-radius: 2px; background: linear-gradient(180deg, ' + b.trail + ', rgba(255,255,255,0))'}></span>
         </${Fragment}>`}
         <span style="position: absolute; left: 7px; top: 0; display: block">${BUS_TOP(b.color)}</span>
+        <span style="position: absolute; left: 50%; top: 15px; transform: translateX(-50%); min-width: 20px; box-sizing: border-box; padding: 1px 3px; border-radius: 5px; background: #1C1C1E; color: #FFFFFF; font-size: 11px; line-height: 14px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums">${b.seats}</span>
       </button>`;
     })}
-    <div style="position: absolute; left: 12px; right: 12px; top: 808px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 11px; color: #3A3A3C; white-space: nowrap">
-      <span style="font-weight: 600">탑승 확률</span>
+    <div style="position: absolute; left: 12px; right: 12px; top: 804px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 11px; color: #3A3A3C; white-space: nowrap">
+      <span style="font-weight: 600">도착 시 ${v.need}석 이상</span>
       <span class="lg"><span class="lgdot" style="background: #1F5FBF"></span>70% 이상</span>
       <span class="lg"><span class="lgdot" style="background: #7FA6DD"></span>40–69%</span>
       <span class="lg"><span class="lgdot" style="background: #F0A04B"></span>40% 미만</span>
     </div>
-    <div style="position: absolute; left: 16px; right: 16px; top: 826px; text-align: center; font-size: 10px; color: #6C6C70">버스 누르면 실시간 노선 · 정류장 누르면 내 정류장 변경</div>
+    <div style="position: absolute; left: 8px; right: 8px; top: 822px; text-align: center; font-size: 10px; color: #6C6C70">버스: 실시간 노선 · 정류장: 내 정류장 변경 · 1/5/10석: 기준 변경</div>
+    </${Fragment}>`;
+  }
+
+  renderHistory(v) {
+    return html`<div style="position: absolute; left: 0; right: 0; top: 192px; bottom: 0; background: #FFFFFF; border-top: 0.5px solid #D1D1D6; box-sizing: border-box; padding: 14px 16px 0; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 3px">
+        <div style="display: flex; align-items: center; gap: 8px">
+          <span class="ell" style="font-size: 20px; font-weight: 800; letter-spacing: -0.3px">${v.myName}</span>
+          <span style="font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: #E5E5EA; color: #3A3A3C; white-space: nowrap">실측 기록</span>
+        </div>
+        <div style="font-size: 13px; color: #6C6C70">${v.routeNo} 버스가 실제로 몇 석 남기고 왔는지${v.histNote}</div>
+      </div>
+      <div style="height: 36px; flex-shrink: 0; box-sizing: border-box; padding: 3px; border-radius: 10px; background: #E3E3E8; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px">
+        ${v.histTabs.map(function (t) { return html`<button key=${t.id} onClick=${t.pick} style=${t.style}>${t.label}</button>`; })}
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; flex-shrink: 0">
+        ${[['평균 잔여', v.histAvg + '석'], ['만석 도착', v.histFull + '대'], ['5석 이상 도착', v.histFive + '대']].map(function (t) {
+          return html`<div key=${t[0]} style="padding: 8px 10px; border-radius: 12px; background: #F2F2F7; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 11px; color: #6C6C70">${t[0]}</span><span style="font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums">${t[1]}</span></div>`;
+        })}
+      </div>
+      <div style="flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 28px">
+        ${v.histRows.map(function (r, i) {
+          return html`<div key=${i} style=${'display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 8px; border-radius: 8px; border-bottom: 0.5px solid #E5E5EA; ' + (r.near ? 'background: #F2F2F7;' : '')}>
+            <span style="width: 46px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums">${r.time}</span>
+            <span style="flex: 1; height: 8px; border-radius: 4px; background: #E5E5EA; overflow: hidden"><span style=${'display: block; height: 100%; border-radius: 4px; background: #8E8E93; width: ' + (r.seats / CAP * 100) + '%'}></span></span>
+            <span style=${'width: 48px; text-align: right; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; color: ' + (r.seats === 0 ? '#B4570A' : '#1C1C1E')}>${seatText(r.seats)}</span>
+          </div>`;
+        })}
+      </div>
+    </div>`;
+  }
+
+  renderLive() {
+    var v = this.vals();
+    return html`
+<div class="screen" style="background: #F2F2F7">
+  <div style=${v.stringsViewStyle}>
+    <div style="position: absolute; left: 12px; right: 16px; top: 54px; height: 44px; display: flex; align-items: center; gap: 8px">
+      <button onClick=${this.backToSelect} class="navbtn">${CHEVRON}<span>노선</span></button>
+      <div style="flex: 1; height: 36px; box-sizing: border-box; padding: 3px; border-radius: 10px; background: #E3E3E8; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px">
+        ${v.tabs.map(function (t) { return html`<button key=${t.no} onClick=${t.pick} style=${t.style}>${t.no}</button>`; })}
+      </div>
+    </div>
+    <div style="position: absolute; left: 20px; right: 20px; top: 100px; height: 44px; display: flex; align-items: center; gap: 10px">
+      <span style="font-size: 30px; font-weight: 800; letter-spacing: -0.5px">${v.routeNo}</span>
+      <span style=${'font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: ' + v.soft + '; color: ' + v.accent}>${v.kind}</span>
+      <span style="font-size: 14px; color: #3A3A3C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${v.toName} 방면</span>
+      <span style="margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 12px; color: #6C6C70; white-space: nowrap"><span style="width: 7px; height: 7px; border-radius: 4px; background: #34C759"></span>실시간</span>
+    </div>
+    <div style="position: absolute; left: 16px; right: 16px; top: 148px; height: 36px; box-sizing: border-box; padding: 3px; border-radius: 10px; background: #E3E3E8; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px">
+      ${v.views.map(function (t) { return html`<button key=${t.id} onClick=${t.pick} style=${t.style}>${t.label}</button>`; })}
+    </div>
+    ${v.view === 'history' ? this.renderHistory(v) : this.renderForecast(v)}
   </div>
 
   <div style=${v.lineViewStyle}>
@@ -460,25 +557,28 @@ class App extends Component {
       <button onClick=${this.backToStrings} class="navbtn">${CHEVRON}<span>도착 순서</span></button>
       <div style="font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 14px; background: #FFFFFF; color: #3A3A3C; max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">내 정류장 · ${v.myName}</div>
     </div>
-    <div style="height: 70px; flex-shrink: 0; padding: 0 20px; display: flex; flex-direction: column; justify-content: center; gap: 4px">
+    <div style="height: 58px; flex-shrink: 0; padding: 0 20px; display: flex; flex-direction: column; justify-content: center; gap: 2px">
       <div style="display: flex; align-items: center; gap: 10px">
-        <span style="font-size: 32px; font-weight: 800; letter-spacing: -0.5px">${v.routeNo}</span>
+        <span style="font-size: 30px; font-weight: 800; letter-spacing: -0.5px">${v.routeNo}</span>
         <span style=${'font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: ' + v.soft + '; color: ' + v.accent}>${v.trackedLabel}</span>
       </div>
-      <div style="font-size: 14px; color: #3A3A3C">${v.fromName} → ${v.toName} 방면</div>
+      <div class="ell" style="font-size: 13px; color: #3A3A3C">${v.statusLabel} ${v.nextName} · ${v.etaText}</div>
     </div>
-    <div style="height: 96px; flex-shrink: 0; box-sizing: border-box; margin: 0 16px; padding: 12px 16px; border-radius: 18px; background: #FFFFFF; display: flex; align-items: center; gap: 14px">
-      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
-        <div class="ell" style="font-size: 12px; font-weight: 600; color: #6C6C70">${v.statusLabel}</div>
-        <div class="ell" style="font-size: 20px; font-weight: 700; letter-spacing: -0.2px">${v.nextName} · ${v.etaText}</div>
-        <div class="ell" style="font-size: 13px; color: #6C6C70">${v.myLine}</div>
+    <div style="flex-shrink: 0; margin: 0 16px; display: flex; gap: 8px; height: 122px">
+      <div style="width: 116px; flex-shrink: 0; box-sizing: border-box; padding: 12px; border-radius: 18px; background: #1C1C1E; color: #FFFFFF; display: flex; flex-direction: column; justify-content: space-between">
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700"><span style="width: 7px; height: 7px; border-radius: 4px; background: #34C759"></span>지금 잔여석</div>
+        <div style="font-size: 38px; font-weight: 800; letter-spacing: -1px; line-height: 40px; font-variant-numeric: tabular-nums">${v.tSeats}</div>
+        <div style="font-size: 11px; color: #C7C7CC">버스 실측값</div>
       </div>
-      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0">
-        <div style="font-size: 11px; color: #6C6C70">내 정류장 탑승</div>
-        <div style=${v.trackPctStyle}>${v.trackPct}</div>
+      <div style="flex: 1; min-width: 0; box-sizing: border-box; padding: 12px; border-radius: 18px; background: #EAF1FB; display: flex; flex-direction: column; justify-content: space-between">
+        <div class="ell" style="font-size: 12px; font-weight: 700; color: #1F5FBF">${v.myName} 도착 시 남을 확률</div>
+        ${v.beforeMy ? html`<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px">
+          ${v.trackProbs.map(function (t) { return html`<div key=${t.k} style="display: flex; flex-direction: column; gap: 1px"><span style=${t.style}>${t.pct}</span><span style="font-size: 11px; font-weight: 600; color: #3A3A3C">${t.k}석 이상</span></div>`; })}
+        </div>` : html`<div style="font-size: 15px; font-weight: 700; color: #3A3A3C">내 정류장을 지났습니다</div>`}
+        <div class="ell" style="font-size: 11px; color: #3A3A3C">예측 · ${v.myLine}</div>
       </div>
     </div>
-    <div onPointerDown=${this.down} onPointerMove=${this.move} onPointerUp=${this.up} onPointerCancel=${this.up} style="position: relative; flex-shrink: 0; width: 390px; height: 262px; background: #FFFFFF; border-top: 0.5px solid #D1D1D6; border-bottom: 0.5px solid #D1D1D6; overflow: hidden; touch-action: none; cursor: grab; user-select: none">
+    <div onPointerDown=${this.down} onPointerMove=${this.move} onPointerUp=${this.up} onPointerCancel=${this.up} style="position: relative; flex-shrink: 0; width: 390px; height: 300px; background: #FFFFFF; border-top: 0.5px solid #D1D1D6; border-bottom: 0.5px solid #D1D1D6; overflow: hidden; touch-action: none; cursor: grab; user-select: none">
       <div style=${v.panStyle}>
         <div style=${v.innerStyle}>
           <div style=${'position: absolute; left: 0; top: 130px; height: 6px; border-radius: 3px; background: #E5E5EA; width: ' + v.lineW + 'px'}></div>
@@ -489,14 +589,18 @@ class App extends Component {
               <div style=${s.labelWrapStyle}>
                 <div style=${s.labelStyle}>${s.name}</div>
                 ${s.tag ? html`<div style=${s.tagStyle}>${s.tag}</div>` : null}
-                ${s.hasProb ? html`<div style=${s.probStyle}>탑승 ${s.prob}</div>` : null}
+                ${s.passed ? html`<div style="font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 5px; background: #F2F2F7; color: #6C6C70; white-space: nowrap">지날 때 ${s.pastSeats}</div>` : null}
+                ${s.ahead ? html`<div style="width: 92px; box-sizing: border-box; padding: 4px 6px; border-radius: 7px; background: #EAF1FB; display: flex; flex-direction: column; gap: 1px; font-size: 10.5px; line-height: 14px">
+                  <div style="font-size: 10px; font-weight: 700; color: #1F5FBF">도착 시 예측</div>
+                  ${s.probs.map(function (q) { return html`<div key=${q.k} style="display: flex; justify-content: space-between; color: #3A3A3C"><span>${q.k}석 이상</span><span style=${q.style}>${q.pct}</span></div>`; })}
+                </div>` : null}
               </div>
             </${Fragment}>`;
           })}
           ${v.ghosts.map(function (g) { return html`<div key=${'g' + g.id} style=${g.style}>${BUS_SIDE('#8E8E93', 36, 24, '#48484A')}</div>`; })}
         </div>
         <div style=${v.myBusLabelStyle}>
-          <div style="font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 12px; background: #1C1C1E; color: #FFFFFF; white-space: nowrap">내 버스 · ${v.busState}</div>
+          <div style="font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 12px; background: #1C1C1E; color: #FFFFFF; white-space: nowrap">지금 ${v.tSeats} · ${v.busState}</div>
         </div>
         <div style=${v.myBusStyle}>${BUS_SIDE(v.accent, 60, 42)}</div>
       </div>
