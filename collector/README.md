@@ -30,7 +30,7 @@ scp -r "/Users/davepark/Documents/2-2/인공지능프로그래밍/bus-collector"
 서버에서:
 
 ```bash
-cd ~/bus-collector
+cd ~/HopOrNot/collector
 cp .env.example .env
 chmod 600 .env
 nano .env            # GBIS_KEY, POSTGRES_PASSWORD 채우기 (디스코드는 선택)
@@ -55,7 +55,7 @@ docker compose logs -f collector     # Ctrl+C 로 로그 보기 종료 (수집�
 ```bash
 crontab -e
 # 아래 줄 추가 (매일 04:10)
-10 4 * * * /home/ubuntu/bus-collector/scripts/backup.sh >> /home/ubuntu/backups/backup.log 2>&1
+10 4 * * * /home/ubuntu/HopOrNot/collector/scripts/backup.sh >> /home/ubuntu/backups/backup.log 2>&1
 ```
 
 `~/backups/bus_YYYY-MM-DD.sql.gz` 로 저장되고 14일 지난 파일은 지워진다.
