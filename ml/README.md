@@ -190,13 +190,19 @@ RPS = 1/(K−1) × Σ_{k=1}^{K−1} (F_k − O_k)²
 
 서빙: 학습한 모델을 파일로 저장 → FastAPI 추론 서버에서 로드 → Spring Boot API가 호출 → 앱.
 
-## 11. 코드 구조 (예정)
+## 11. 코드 구조
 
 ```
 ml/
 ├── README.md               # 이 문서
+├── environment.yml         # conda 환경
+├── .env.example            # DB 접속 정보 양식
 ├── data/                   # .gitignore (원본·가공 데이터는 Git에 넣지 않음)
+│   ├── raw/                # DB 추출본, boarding2025/ (승하차 원본)
+│   ├── interim/            # 운행, 도착 이벤트, 학습 샘플
+│   └── predictions/        # 모델별 예측 결과
 ├── src/
+│   ├── config.py           # 경로, 노선, 단계, 날짜 분할
 │   ├── export_db.py        # PostgreSQL → parquet (기간 지정)
 │   ├── build_trips.py      # 관측 → 운행 → 정류장 도착 이벤트 (라벨, 애매함 표시)
 │   ├── boarding2025.py     # 2025 승하차 → 정류장 × 요일유형 × 시간대 평균
@@ -210,6 +216,20 @@ ml/
 ├── notebooks/              # 탐색, 그래프
 └── models/                 # 학습된 모델 파일 (.gitignore, 릴리스에만 첨부)
 ```
+
+실행은 `ml/` 에서 한다:
+
+```bash
+conda env create -f environment.yml
+conda activate hopornot-ml
+cp .env.example .env && chmod 600 .env    # 서버 collector/.env 의 DB 값 입력
+
+ssh -N -L 5432:127.0.0.1:5432 bus         # 다른 터미널에서 켜 둔다
+python -m src.export_db --start 2026-11-05 --end 2026-11-27
+```
+
+- macOS에서 pip로 받은 torch와 LightGBM을 한 프로세스에서 쓰면 segfault가 나거나 멈춘다. 이 환경에서 둘을 pip로 다시 설치하지 않는다.
+- `evaluate.py` 는 모델을 불러오지 않고 `data/predictions/` 의 예측 결과만 읽는다.
 
 ## 12. 일정
 
