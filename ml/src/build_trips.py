@@ -4,6 +4,7 @@
 출력: data/interim/arrival_events.parquet
 
 한 행은 (운행, 예측 대상 정류장)이고 그 정류장에 도착할 때의 잔여석 범위를 담는다.
+known_at은 도착했다는 사실과 그 값을 함께 알 수 있게 된 시각이다. 도착을 직접 보지 못했으면 다음 관측 시각이다.
 source 값:
   arrival  그 정류장에서 도착(state_cd = 1)으로 관측
   leg      직전 실제 정류장을 떠난 뒤의 관측. 문이 안 열리는 구간이라 도착 잔여석과 같다
@@ -69,20 +70,20 @@ def trip_events(trip: pd.DataFrame, stops: pd.DataFrame) -> list[dict]:
 
         if arrived is not None:
             low = high = arrived.remain_seat_cnt
-            source, at = "arrival", arrived.collected_at
+            source, at, known = "arrival", arrived.collected_at, arrived.collected_at
         elif on_leg:
             low = high = before.remain_seat_cnt
-            source, at = "leg", interpolate_time(seq, before, after)
+            source, at, known = "leg", interpolate_time(seq, before, after), after.collected_at
         elif before is not None and after is not None:
             low, high = sorted((before.remain_seat_cnt, after.remain_seat_cnt))
             source = "range" if one_way(stops, before.station_seq, after.station_seq) else "mixed"
-            at = interpolate_time(seq, before, after)
+            at, known = interpolate_time(seq, before, after), after.collected_at
         else:
             continue
         events.append({
             "route": stop.route, "veh_id": trip["veh_id"].iloc[0], "trip_id": trip["trip_id"].iloc[0],
             "station_seq": seq, "station_id": stop.station_id, "station_name": stop.station_name,
-            "direction": stop.direction, "zone": stop.zone, "arrived_at": at,
+            "direction": stop.direction, "zone": stop.zone, "arrived_at": at, "known_at": known,
             "seats_low": low, "seats_high": high, "source": source,
         })
     return events
@@ -111,7 +112,8 @@ def main():
             events.extend(trip_events(trip, route_stops))
     result = pd.DataFrame(events)
 
-    result["arrived_at"] = pd.to_datetime(result["arrived_at"]).dt.tz_convert(TIMEZONE)
+    for column in ("arrived_at", "known_at"):
+        result[column] = pd.to_datetime(result[column]).dt.tz_convert(TIMEZONE)
     result["service_date"] = service_date(result["arrived_at"])
     result["key_segment"] = key_segment(result)
     low, high = stage_of(result["seats_low"]), stage_of(result["seats_high"])
