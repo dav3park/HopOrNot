@@ -16,6 +16,28 @@ from .split import assign_split, service_date
 
 TIME_DTYPE = f"datetime64[us, {TIMEZONE}]"
 
+NUMERIC_FEATURES = [
+    "current_seats", "current_seq", "state_cd", "active_buses", "front_seats", "front_seq_gap", "target_seq",
+    "stops_ahead", "checkpoints_ahead", "day_of_week", "hour", "half_hour", "lead_seats", "lead_age_minutes",
+    "target_boardings", "target_alightings", "between_boardings", "between_alightings",
+]
+CATEGORICAL_FEATURES = ["route", "direction", "zone", "day_type", "target_station_id"]
+
+
+def model_inputs(samples: pd.DataFrame, stops: pd.DataFrame) -> pd.DataFrame:
+    """모델 입력 열만 뽑고 범주형은 학습·평가에서 같은 범주 목록을 쓰게 한다."""
+    categories = {
+        "route": sorted(stops["route"].unique()),
+        "direction": sorted(stops["direction"].dropna().unique()),
+        "zone": sorted(stops["zone"].dropna().unique()),
+        "day_type": ["평일", "토요일", "일요일·공휴일"],
+        "target_station_id": sorted(stops.loc[stops["is_target"], "station_id"].unique()),
+    }
+    inputs = samples[NUMERIC_FEATURES + CATEGORICAL_FEATURES].copy()
+    for column, values in categories.items():
+        inputs[column] = pd.Categorical(inputs[column], categories=values)
+    return inputs
+
 
 def with_fleet(trips: pd.DataFrame) -> pd.DataFrame:
     """같은 호출(노선, 수집 시각)에 함께 잡힌 차량으로 운행 대수와 바로 앞차 상태를 붙인다."""
