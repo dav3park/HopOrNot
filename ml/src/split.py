@@ -19,6 +19,16 @@ def assign_split(service_dates: pd.Series) -> pd.Series:
     return result
 
 
+def train_eval(samples: pd.DataFrame, train_end: date) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """train_end까지 학습, 그 뒤를 평가에 쓴다. 테스트 기간은 어느 쪽에도 넣지 않는다.
+
+    학습에서는 애매한 라벨을 뺀다. 평가 쪽은 evaluate.py가 거른다.
+    """
+    open_samples = samples[samples["split"] != "test"]
+    train = open_samples[(open_samples["service_date"] <= train_end) & ~open_samples["ambiguous"]]
+    return train, open_samples[open_samples["service_date"] > train_end]
+
+
 def rolling_windows(train_days: list[int], eval_days: int = 4) -> list[tuple[date, date, date, date]]:
     """학습 시작일부터 n일 학습 → 다음 eval_days일 평가. test 기간은 쓰지 않는다.
 

@@ -138,6 +138,7 @@
 | # | 모델 | 라이브러리 | 수업 연결 | 역할 |
 | --- | --- | --- | --- | --- |
 | 0 | 과거 빈도 기준선 | 규칙 | – | 같은 노선·정류장·요일유형·30분 구간의 과거 단계 비율. "AI 없이" 기준 |
+| 0b | 현재 단계 유지 | 규칙 | – | 지금 잔여석의 단계가 도착 때도 그대로라고 답함. 현재 상태만 쓰는 기준 |
 | 1 | 다항 로지스틱 회귀 | scikit-learn | 선형 분류 | 가장 단순한 학습 모델 |
 | 2 | 랜덤 포레스트 | scikit-learn | 트리 앙상블 (배깅) | 배깅 계열 |
 | 3 | **LightGBM** | lightgbm | 트리 앙상블 (부스팅) | **주 모델** |
@@ -272,6 +273,9 @@ python -m src.boarding2025
 python -m src.stops
 python -m src.build_trips
 python -m src.features
+
+python -m src.train_baseline --train-end 2026-11-19
+python -m src.evaluate                    # 테스트 기간은 --final 을 줘야 열림
 ```
 
 - macOS에서 pip로 받은 torch와 LightGBM을 한 프로세스에서 쓰면 segfault가 나거나 멈춘다. 이 환경에서 둘을 pip로 다시 설치하지 않는다.
