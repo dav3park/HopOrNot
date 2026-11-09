@@ -1,9 +1,10 @@
 """날짜 기준 학습·검증·테스트 분할과 롤링 평가 구간 (README 7장)."""
 from datetime import date, timedelta
 
+import numpy as np
 import pandas as pd
 
-from .config import DAY_BOUNDARY_HOUR, SPLITS
+from .config import DAY_BOUNDARY_HOUR, KEY_WEIGHT, SPLITS
 
 
 def service_date(timestamps: pd.Series) -> pd.Series:
@@ -27,6 +28,10 @@ def train_eval(samples: pd.DataFrame, train_end: date) -> tuple[pd.DataFrame, pd
     open_samples = samples[samples["split"] != "test"]
     train = open_samples[(open_samples["service_date"] <= train_end) & ~open_samples["ambiguous"]]
     return train, open_samples[open_samples["service_date"] > train_end]
+
+
+def sample_weights(samples: pd.DataFrame) -> np.ndarray:
+    return np.where(samples["key_segment"].notna(), KEY_WEIGHT, 1.0)
 
 
 def rolling_windows(train_days: list[int], eval_days: int = 4) -> list[tuple[date, date, date, date]]:

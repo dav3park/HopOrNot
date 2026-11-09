@@ -150,6 +150,8 @@
 
 **모델 5 계산**: 예측 변화량 + 검증 세트의 오차 분포(몇 정거장 앞인지별)를 0 ~ 정원으로 자르고, 그 분포에서 P(≥1), P(≥5), P(≥10)을 구한다. 0 이하가 모두 만석으로 모여 만석 확률이 나온다. 검증 세트의 RPS와 P(≥1) Brier 점수가 둘 다 모델 3보다 좋으면 주 모델을 바꾼다.
 
+**핵심 구간 가중치**: 학습에서 핵심 구간 샘플에 가중치 3을 준다 (`KEY_WEIGHT`).
+
 **클래스 불균형 대응**: 클래스 가중치(`class_weight`, LightGBM `class_weight`/`is_unbalance`), 학습 후 확률 보정(검증 세트로 isotonic 또는 temperature scaling).
 
 **순서 보장**: 4단계 확률을 누적해 "k석 이상 확률"을 만들므로 P(≥1) ≥ P(≥5) ≥ P(≥10)이 항상 성립한다.
@@ -275,6 +277,8 @@ python -m src.build_trips
 python -m src.features
 
 python -m src.train_baseline --train-end 2026-11-19
+python -m src.train_sklearn --train-end 2026-11-19
+python -m src.train_lgbm --train-end 2026-11-19
 python -m src.evaluate                    # 테스트 기간은 --final 을 줘야 열림
 ```
 
