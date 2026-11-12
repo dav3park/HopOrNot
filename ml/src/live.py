@@ -20,8 +20,8 @@ from .evaluate import PROBABILITY_COLUMNS
 from .features import (CATEGORICAL_FEATURES, NUMERIC_FEATURES, add_features, candidate_targets, model_inputs,
                        observed_rows, with_fleet)
 from .split import service_date
-from .waiting import (MAX_ELAPSED_MINUTES, MIN_RATE_PER_MINUTE, ZONES, day_type_of, design, mean_of, seat_distribution,
-                      seat_probability)
+from .waiting import (FIRST_BUS_ELAPSED_MINUTES, MAX_ELAPSED_MINUTES, MIN_RATE_PER_MINUTE, ZONES, WaitingModel,
+                      bunch_ids, day_type_of, expected_ahead, seat_distribution, seat_probability)
 
 STALE_MINUTES = 15  # 마지막 수집이 이보다 오래되면 실시간 값이 아니다 (01–06시 수집 중지)
 SIMPLE_FROM_STOPS_AHEAD = 4  # 이만큼 앞부터는 중간 단계 예측이 약하므로 P(≥1), P(≥20)만 보여준다
@@ -34,9 +34,8 @@ class Artifacts:
     stops: pd.DataFrame
     profile: pd.DataFrame
     booster: lgb.Booster
-    waiting_params: np.ndarray
-    waiting_k: float
-    cells: pd.DataFrame
+    waiting: WaitingModel
+    cells: pd.Series
     within_stage: dict[int, np.ndarray]
 
 
@@ -50,13 +49,11 @@ class Snapshot:
 
 def load_artifacts() -> Artifacts:
     waiting = json.loads((MODELS_DIR / "waiting.json").read_text())
-    params = np.array(list(waiting["params"].values()))
     return Artifacts(
         stops=pd.read_parquet(INTERIM_DIR / "stops.parquet"),
         profile=pd.read_parquet(INTERIM_DIR / "boarding_profile.parquet"),
         booster=lgb.Booster(model_file=str(MODELS_DIR / "lgbm.txt")),
-        waiting_params=params,
-        waiting_k=float(np.exp(params[-1])),
+        waiting=WaitingModel.from_json(waiting),
         cells=pd.read_parquet(MODELS_DIR / "waiting_cells.parquet").set_index(["route", "station_id", "hour"])["cell_ratio"],
         within_stage={int(s): np.array(v) for s, v in waiting["within_stage"].items()},
     )
@@ -81,14 +78,28 @@ def snapshot(observations: pd.DataFrame, art: Artifacts) -> Snapshot:
 
 
 def previous_bus(snap: Snapshot, route: str, seq: int) -> dict | None:
-    """이 정류장을 가장 최근에 지난 버스의 도착 시각과 만석 출발 여부 (지금까지 확인된 것만)."""
-    passed = snap.events[(snap.events["route"] == route) & (snap.events["station_seq"] == seq)]
+    """이 정류장을 가장 최근에 지난 버스 묶음 (같은 노선, BUNCH_MINUTES 안에 연달아 온 차들, 학습과 같은 규칙).
+
+    마지막 도착 시각, 도착 잔여석 합, 그 앞 묶음과의 간격, 모두 만석으로 떠났는지 (확인된 것만).
+    """
+    passed = snap.events[(snap.events["route"] == route) & (snap.events["station_seq"] == seq)].sort_values("arrived_at")
     if passed.empty:
         return None
-    last = passed.sort_values("arrived_at").iloc[-1]
-    trip = snap.trips[(snap.trips["trip_id"] == last["trip_id"]) & (snap.trips["station_seq"] > seq)]
-    departure = int(trip.sort_values("collected_at")["remain_seat_cnt"].iloc[0]) if len(trip) else None
-    return {"arrived_at": last["arrived_at"], "departure_seats": departure, "left_full": departure == 0}
+    constant = pd.Series(0, index=passed.index)
+    passed = passed.assign(bunch=bunch_ids(passed["arrived_at"], [constant]))
+    group = passed[passed["bunch"] == passed["bunch"].iloc[-1]]
+    before = passed[passed["bunch"] < group["bunch"].iloc[0]]
+    gap = ((group["arrived_at"].iloc[0] - before["arrived_at"].iloc[-1]).total_seconds() / 60 if len(before)
+           else FIRST_BUS_ELAPSED_MINUTES)
+    departures = []
+    for trip_id in group["trip_id"]:
+        after = snap.trips[(snap.trips["trip_id"] == trip_id) & (snap.trips["station_seq"] > seq)]
+        departures.append(int(after.sort_values("collected_at")["remain_seat_cnt"].iloc[0]) if len(after) else None)
+    known = all(d is not None for d in departures)
+    return {"arrived_at": group["arrived_at"].iloc[-1], "buses": len(group),
+            "arrival_seats": float(group["seats_low"].sum()), "elapsed": float(np.clip(gap, 0.5, MAX_ELAPSED_MINUTES)),
+            "departure_seats": departures, "departures_known": known,
+            "left_full": known and all(d == 0 for d in departures)}
 
 
 def my_seat_probability(snap: Snapshot, art: Artifacts, route: str, seq: int, user_arrived_at: pd.Timestamp,
@@ -99,6 +110,7 @@ def my_seat_probability(snap: Snapshot, art: Artifacts, route: str, seq: int, us
         return {"probability": None, "note": f"대기 인원 모델은 승차 구간({', '.join(ZONES)})에서만 학습했다"}
     previous = previous_bus(snap, route, seq)
     note = None
+    prev_seats, prev_elapsed = 0.0, FIRST_BUS_ELAPSED_MINUTES
     if previous is None:
         elapsed, prev_full = MAX_ELAPSED_MINUTES, False
         note = f"오늘 이 정류장을 지난 버스 기록이 없어 앞차 이후 {MAX_ELAPSED_MINUTES}분으로 가정"
@@ -106,26 +118,33 @@ def my_seat_probability(snap: Snapshot, art: Artifacts, route: str, seq: int, us
         elapsed = (user_arrived_at - previous["arrived_at"]).total_seconds() / 60
         elapsed = float(np.clip(elapsed, 0.5, MAX_ELAPSED_MINUTES))
         prev_full = bool(previous["left_full"])
-        if previous["departure_seats"] is None:
+        prev_seats, prev_elapsed = previous["arrival_seats"], previous["elapsed"]
+        if not previous["departures_known"]:
             note = "앞차가 아직 정류장을 떠난 것이 확인되지 않아 만석 출발 여부를 모름 (아니라고 가정)"
 
-    local = pd.Series([user_arrived_at]).dt.tz_convert(TIMEZONE)
-    hour, day_type = int(local.dt.hour.iloc[0]), day_type_of(local)[0]
-    usual = art.profile[(art.profile["route"] == route) & (art.profile["station_id"] == stop["station_id"])
-                        & (art.profile["day_type"] == day_type) & (art.profile["hour"] == hour)]["boardings"]
-    rate = max(float(usual.iloc[0]) / 60 if len(usual) else 0.0, MIN_RATE_PER_MINUTE)
-    cell = float(art.cells.get((route, stop["station_id"], hour), 1.0))
-    frame = pd.DataFrame({"zone": [stop["zone"]], "rate": [rate], "elapsed": [elapsed], "prev_left_full": [prev_full],
-                          "cell_ratio": [cell]})
-    mu = mean_of(art.waiting_params, design(frame))
+    def rate_and_cell(at: pd.Timestamp) -> tuple[float, float]:
+        local = pd.Series([at]).dt.tz_convert(TIMEZONE)
+        hour, day_type = int(local.dt.hour.iloc[0]), day_type_of(local)[0]
+        usual = art.profile[(art.profile["route"] == route) & (art.profile["station_id"] == stop["station_id"])
+                            & (art.profile["day_type"] == day_type) & (art.profile["hour"] == hour)]["boardings"]
+        rate = max(float(usual.iloc[0]) / 60 if len(usual) else 0.0, MIN_RATE_PER_MINUTE)
+        return rate, float(art.cells.get((route, stop["station_id"], hour), 1.0))
+
+    rate, cell = rate_and_cell(user_arrived_at)
+    prev_rate, prev_cell = rate_and_cell(previous["arrived_at"]) if previous else (rate, cell)
+    frame = pd.DataFrame({"zone": [stop["zone"]], "rate": [rate], "elapsed": [elapsed], "cell_ratio": [cell],
+                          "prev_left_full": [prev_full], "prev_seats": [prev_seats], "prev_rate": [prev_rate],
+                          "prev_elapsed": [prev_elapsed], "prev_cell_ratio": [prev_cell]})
+    mu = expected_ahead(art.waiting, frame)
     seats = seat_distribution(stage_probabilities[None, :], art.within_stage)
-    probability = float(seat_probability(seats, mu, art.waiting_k)[0])
+    probability = float(seat_probability(seats, mu, art.waiting.k)[0])
     return {
         "probability": round(probability, 3),
         "expected_people_ahead": round(float(mu[0]), 1),
         "minutes_since_previous_bus": round(elapsed, 1),
         "previous_bus": None if previous is None else {
-            "arrived_at": previous["arrived_at"].isoformat(), "left_full": prev_full,
+            "arrived_at": previous["arrived_at"].isoformat(), "buses": previous["buses"],
+            "arrival_seats": previous["arrival_seats"], "left_full": prev_full,
             "departure_seats": previous["departure_seats"]},
         "note": note,
     }
