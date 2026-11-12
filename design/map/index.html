@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HopOrNot · 지도 UI 초안</title>
+<style>
+  :root{
+    --ink:#1C1C1E; --ink2:#3A3A3C; --muted:#6C6C70; --faint:#8E8E93; --line:#E5E5EA; --bg:#F2F2F7; --white:#fff;
+    --blue:#1F5FBF; --blueMid:#BFD3F0; --blueTint:#EAF1FB; --orange:#F0A04B; --orangeTint:#FBE3C8; --orangeInk:#B4570A;
+    --route:#B8123E; --green:#34C759;
+    --shadow:0 2px 8px rgba(0,0,0,.14);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;background:#DCDDE2;color:var(--ink);-webkit-font-smoothing:antialiased}
+  header{padding:24px 24px 8px;max-width:1720px;margin:0 auto}
+  header h1{font-size:22px;font-weight:900}
+  header p{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.5}
+  .tabs{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}
+  .tabs button{border:0;background:#fff;border-radius:16px;padding:7px 12px;font:inherit;font-size:13px;font-weight:700;color:var(--ink2);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+  .tabs button.on{background:var(--ink);color:#fff}
+  .board{display:flex;flex-wrap:wrap;gap:40px;padding:20px 24px 60px;max-width:1720px;margin:0 auto}
+  .item h2{font-size:14px;font-weight:800;margin-bottom:10px;color:var(--ink2)}
+  .item h2 span{color:var(--faint);font-weight:600;margin-left:6px}
+  .board.single .item{display:none}.board.single .item.on{display:block}
+  @media (max-width:860px){ .board .item{display:none} .board .item.on{display:block} .board{justify-content:center;padding:12px} }
+
+  .phone{position:relative;width:390px;height:844px;border-radius:44px;overflow:hidden;background:var(--bg);box-shadow:0 0 0 10px #111,0 20px 50px rgba(0,0,0,.3);margin:10px}
+  .phone > *, .layer > *{position:absolute}
+  .layer{left:0;top:0;width:390px;height:844px}
+  .map{left:0;top:0;width:390px;height:844px}
+  .status{left:32px;top:14px;font-size:15px;font-weight:700}
+  .status.r{left:auto;right:28px;font-size:12px;top:16px}
+
+  /* stop pin: callout to the left of the dot */
+  .pin{display:flex;align-items:center;transform:translate(calc(-100% + 7px),-50%)}
+  .pin .pill{display:flex;flex-direction:column;align-items:center;padding:4px 8px 5px;border-radius:10px;border:2px solid #fff;box-shadow:var(--shadow);line-height:1.2;white-space:nowrap}
+  .pin .pill small{font-size:10px;font-weight:600}
+  .pin .pill b{font-size:15px;font-weight:900}
+  .pin .stem{width:8px;height:2px;background:#fff}
+  .pin .dot{width:14px;height:14px;border-radius:50%;background:#fff;border:4px solid var(--blue)}
+  .pin.high .pill{background:var(--blue);color:#fff}
+  .pin.mid .pill{background:var(--blueMid);color:var(--blue)}
+  .pin.low .pill{background:var(--orangeTint);color:var(--orangeInk)}
+  .pin.low .dot{border-color:var(--orange)}
+  .pin .tag{position:absolute;bottom:calc(100% + 3px);left:50%;transform:translateX(calc(-50% - 11px));}
+
+  .bus{display:flex;align-items:center;gap:4px;transform:translate(-15px,-15px)}
+  .bus .disc{width:30px;height:30px;border-radius:50%;background:var(--route);border:2px solid #fff;display:grid;place-items:center;box-shadow:var(--shadow)}
+  .bus .seats{background:var(--ink);color:#fff;font-size:11px;font-weight:700;padding:2px 7px 3px;border-radius:9px;box-shadow:var(--shadow)}
+  .bus.sel .disc{border:3px solid var(--blue);box-shadow:0 0 0 6px rgba(31,95,191,.35)}
+  .bus.dim{opacity:.35}
+
+  .tag{display:inline-flex;align-items:center;padding:2px 7px 3px;border-radius:8px;font-size:10px;font-weight:700;color:#fff;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+  .tag.route{background:var(--route)} .tag.blue{background:var(--blue)}
+  .chip{display:inline-flex;align-items:center;padding:2px 7px 3px;border-radius:7px;font-size:11px;font-weight:700;white-space:nowrap}
+  .chip.now{background:var(--ink);color:#fff;font-size:10px}
+  .chip.p-high{background:var(--blue);color:#fff} .chip.p-mid{background:var(--blueMid);color:var(--blue)} .chip.p-low{background:var(--orangeTint);color:var(--orangeInk)}
+  .chip.gray{background:var(--bg);color:var(--faint);font-size:10px}
+
+  .top{left:16px;top:50px;width:358px;display:flex;flex-direction:column;gap:8px}
+  .seg{display:flex;gap:4px;background:#fff;border-radius:14px;padding:4px;box-shadow:var(--shadow)}
+  .seg span{flex:1;text-align:center;padding:8px 0;border-radius:10px;font-size:15px;font-weight:700;color:var(--muted)}
+  .seg span.on{background:var(--route);color:#fff;font-weight:900}
+  .crit{display:flex;gap:6px}
+  .crit span{background:#fff;border-radius:16px;padding:6px 12px 7px;font-size:12px;font-weight:700;color:var(--ink2);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+  .crit span.on{background:var(--ink);color:#fff}
+  .float{background:#fff;border-radius:18px;padding:8px 14px 9px;font-size:13px;font-weight:700;color:var(--blue);box-shadow:var(--shadow)}
+  .float.dark{background:var(--ink);color:#fff;font-size:12px}
+  .legend{display:flex;align-items:center;gap:6px;background:#fff;border-radius:14px;padding:5px 10px 6px;font-size:11px;color:var(--muted);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+  .legend b{color:var(--ink2)} .legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .locbtn{width:40px;height:40px;border-radius:50%;background:#fff;display:grid;place-items:center;box-shadow:var(--shadow)}
+
+  .sheet{left:0;bottom:0;width:390px;background:#fff;border-radius:22px 22px 0 0;padding:8px 16px 28px;display:flex;flex-direction:column;gap:12px;box-shadow:0 -4px 16px rgba(0,0,0,.12)}
+  .handle{width:36px;height:5px;border-radius:3px;background:var(--line);align-self:center}
+  .row{display:flex;align-items:center;gap:10px}
+  .between{justify-content:space-between}
+  .sub{font-size:12px;font-weight:500;color:var(--muted)}
+  .h1{font-size:22px;font-weight:900}
+  .h2{font-size:20px;font-weight:900}
+  .pill-btn{background:var(--bg);border-radius:14px;padding:6px 12px 7px;font-size:12px;font-weight:700;color:var(--ink2)}
+  .ai{background:var(--blueTint);border-radius:14px;padding:12px 14px}
+  .ai .lab{display:inline-block;background:#fff;color:var(--blue);font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px 2px}
+  .ai .big{font-size:32px;font-weight:900;color:var(--blue);line-height:1}
+  .walk{border:1.5px solid var(--blue);border-radius:14px;padding:10px 12px}
+  .walk b{font-size:14px}
+  .strip{display:flex;gap:8px}
+  .strip > div{flex:1;background:var(--bg);border-radius:12px;padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:4px}
+  .strip > div.rec{background:var(--blueTint);outline:2px solid var(--blue);outline-offset:-2px}
+  .strip small{font-size:11px;font-weight:700;color:var(--muted)} .strip .rec small{color:var(--blue)}
+  .strip b{font-size:16px;font-weight:900}
+  .nowbar{background:var(--ink);color:#fff;border-radius:12px;padding:10px 14px}
+  .nowbar i{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block}
+  .prob{background:var(--blueTint);border-radius:14px;padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px}
+  .bar{flex:1;height:12px;border-radius:6px;background:#fff;overflow:hidden}
+  .bar > i{display:block;height:100%;border-radius:6px}
+  .list > .item-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .rank{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:var(--bg)}
+  .rank.best{background:var(--blueTint);outline:2px solid var(--blue);outline-offset:-2px}
+  .rank .no{width:24px;height:24px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:12px;font-weight:900;color:var(--muted);flex:none}
+  .rank.best .no{background:var(--blue);color:#fff}
+  .cta{background:var(--blue);color:#fff;border-radius:14px;padding:14px 0 15px;text-align:center;font-size:15px;font-weight:700}
+  .chart{background:var(--bg);border-radius:14px;padding:12px 14px}
+  .bars{position:relative;height:96px;margin-top:22px;display:flex;align-items:flex-end;gap:4px}
+  .bars > i{flex:1;border-radius:4px 4px 0 0}
+  .bars .th{position:absolute;left:0;right:0;border-top:1px dashed var(--ink2)}
+  .bars .now{position:absolute;top:-4px;bottom:0;border-left:1.5px solid var(--route)}
+  .xlab{position:relative;height:16px;margin-top:5px;font-size:10px;color:var(--faint)}
+  .xlab span{position:absolute;transform:translateX(-50%)}
+  .up > div{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .up > div.best{background:var(--blueTint);outline:2px solid var(--blue);outline-offset:-2px;border-radius:12px;padding:8px 10px;border-bottom:0}
+  .t{width:48px;font-size:15px;font-weight:900}
+  .key{display:flex;gap:12px;font-size:11px;color:var(--muted)}
+  .key i{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:4px;vertical-align:-1px}
+</style>
+</head>
+<body>
+<header>
+  <h1>HopOrNot · 지도 UI 초안</h1>
+  <p>노선 위 정류장마다 탑승 확률을 띄우고, 아래 시트에서 판단(몇 대 보낼지, 어디까지 갈지, 몇 시에 탈지)을 보여준다.<br>
+     색 규칙: <b>검정</b> = 지금 실측 · <b>파랑</b> = 도착 시 예측 · <b>회색</b> = 지난 기록. 확률은 70% 이상 진한 파랑 / 40–69% 연한 파랑 / 40% 미만 주황. 모든 숫자는 샘플이다.</p>
+  <div class="tabs" id="tabs"></div>
+</header>
+<main class="board" id="board"></main>
+
+<script>
+// ---------- geometry shared with the Figma draft ----------
+const DY = -50;
+const STOPS = { 경희대학교:[84,470+DY], 경희대정문:[138,420+DY], 영통역:[206,362+DY], 청명역:[266,300+DY], 기흥IC입구:[316,236+DY] };
+const lv = p => p>=70 ? 'high' : p>=40 ? 'mid' : 'low';
+const color = p => ({high:'var(--blue)', mid:'var(--blueMid)', low:'var(--orange)'})[lv(p)];
+const pc = (p) => `<span class="chip p-${lv(p)}">${p}%</span>`;
+
+const MAP = `<svg class="map" viewBox="0 0 390 844" xmlns="http://www.w3.org/2000/svg">
+ <g transform="translate(0 ${DY})">
+  <rect y="-60" width="390" height="960" fill="#ECEEEA"/>
+  <path d="M-20 600 C 80 560 120 640 230 600 S 360 520 420 560 L420 620 C 340 590 300 680 200 660 S 60 640 -20 670 Z" fill="#CFE0EE"/>
+  <path d="M20 120 h120 v70 h-120z M210 380 h110 v80 h-110z M30 300 h90 v60 h-90z" fill="#D7E8CC"/>
+  <g stroke="#fff" stroke-width="9" stroke-linecap="round" fill="none"><path d="M-10 250 L400 330"/><path d="M-10 420 L400 470"/><path d="M90 -60 L150 900"/><path d="M230 -60 L210 900"/><path d="M-10 720 L400 760"/><path d="M330 -60 L360 900"/></g>
+  <g stroke="#fff" stroke-width="4" fill="none"><path d="M-10 170 L400 200"/><path d="M-10 540 L400 520"/><path d="M40 -60 L60 900"/><path d="M280 -60 L300 900"/><path d="M-10 640 L400 650"/></g>
+  <path d="M316 236 C 342 170 366 110 388 40 L 400 -60" stroke="#F3DE9C" stroke-width="14" fill="none" stroke-linecap="round"/>
+  <g font-size="11" font-weight="600" fill="#8E8E93" opacity=".8"><text x="30" y="392">영통동</text><text x="150" y="262">청명</text><text x="210" y="172">기흥</text><text x="60" y="652">원천호수</text></g>
+  <path d="M84 470 L138 420 L206 362 L266 300 L316 236 C 342 170 366 110 388 40 L 396 -60" stroke="#fff" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M84 470 L138 420 L206 362 L266 300 L316 236 C 342 170 366 110 388 40 L 396 -60" stroke="#B8123E" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+ </g></svg>`;
+
+const BUS_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="15" rx="3" stroke="#fff" stroke-width="2.4"/><path d="M4 11h16" stroke="#fff" stroke-width="2.4"/><path d="M7 18v3M17 18v3" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+
+function pin(stop, label, p, tag){
+  const [x,y] = STOPS[stop];
+  return `<div class="pin ${lv(p)}" style="left:${x}px;top:${y}px">
+    ${tag ? `<span class="tag ${tag[1]}">${tag[0]}</span>` : ''}
+    <div class="pill"><small>${label}</small><b>${p}%</b></div><i class="stem"></i><i class="dot"></i></div>`;
+}
+function bus(x,y,seats,cls=''){ return `<div class="bus ${cls}" style="left:${x}px;top:${y}px"><span class="disc">${BUS_ICON}</span><span class="seats">${seats}</span></div>`; }
+const BUSES = [[283.5,227.6,'4석'],[227,290,'18석'],[158,353,'37석'],[94.8,410,'44석']];
+const status = t => `<div class="status">${t}</div><div class="status r">5G ▮▮▮</div>`;
+const back = (t) => `<div class="float" style="left:16px;top:52px">‹&nbsp; ${t}</div>`;
+
+// ---------- 01 지도 홈 ----------
+const s1 = () => `${MAP}
+  ${pin('경희대학교','경희대학교',99)}${pin('경희대정문','경희대정문',99)}${pin('영통역','영통역',95)}
+  ${pin('청명역','청명역',83,['걸어서 4분 빨리','blue'])}${pin('기흥IC입구','기흥IC입구',12,['내 정류장','route'])}
+  ${BUSES.map(b=>bus(...b)).join('')}
+  ${status('18:12')}
+  <div class="top">
+    <div class="seg"><span>5100</span><span class="on">M5107</span><span>1112</span></div>
+    <div class="crit"><span class="on">1석 이상</span><span>5석 이상</span><span>10석 이상</span></div>
+  </div>
+  <div class="locbtn" data-above="44" style="right:16px"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M3 11 21 3l-8 18-2-8-8-2Z" fill="#1F5FBF"/></svg></div>
+  <div class="legend" data-above="8" style="right:16px"><b>탑승 확률</b><i style="background:var(--blue)"></i>70% 이상<i style="background:var(--blueMid)"></i>40–69%<i style="background:var(--orange)"></i>40% 미만</div>
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="row between"><div><div class="sub">내 정류장 · 서울역 방면 · 4대 오는 중</div><div class="h1">기흥IC입구</div></div><span class="pill-btn">정류장 변경</span></div>
+    <div class="ai row between">
+      <div><span class="lab">AI 판단 · 여기서 기다리면</span><div style="font-size:18px;font-weight:900;margin-top:2px">2대 보내고 3번째 버스</div><div class="sub">18:23 도착 · 지금 37석</div></div>
+      <div style="text-align:right"><div class="sub" style="font-size:11px">도착 시 1석 이상</div><div class="big">92%</div></div>
+    </div>
+    <div class="walk row">
+      <svg width="28" height="28" viewBox="0 0 28 28" style="flex:none"><circle cx="14" cy="14" r="14" fill="#1F5FBF"/><circle cx="15" cy="7.5" r="2" fill="#fff"/><path d="M12 22l2-6 3 2v4M14 16l-1-4 4 1 2 3M13 12l-3 2" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      <div style="flex:1"><b>청명역까지 걸어가면 4분 빨리 타요</b><div class="sub">도보 8분 · 다음 버스 18:19 · 1석 이상 83%</div></div><span style="font-size:22px;color:var(--faint);font-weight:700">›</span>
+    </div>
+    <div class="strip">
+      ${[['이번','1분','4석',12],['다음','5분','18석',58],['3번째','11분','37석',92,1],['4번째','15분','44석',98]].map(([l,m,s,p,r])=>
+        `<div class="${r?'rec':''}"><small>${r?'추천 · ':''}${l}</small><b>${m}</b><span class="chip now">지금 ${s}</span>${pc(p)}</div>`).join('')}
+    </div>
+  </div>`;
+
+// ---------- 02 버스 선택 ----------
+const bar = (label,p) => `<div class="row"><span style="width:66px;font-size:13px;font-weight:700;color:var(--ink2)">${label}</span><div class="bar"><i style="width:${p}%;background:${color(p)}"></i></div><b style="width:44px;text-align:right;font-size:16px;font-weight:900;color:${lv(p)==='low'?'var(--orangeInk)':'var(--blue)'}">${p}%</b></div>`;
+const s2 = () => `<div class="layer" style="transform:translateY(-110px)">${MAP}
+  ${pin('영통역','영통역 · 18:15',99)}${pin('청명역','청명역 · 18:19',97)}${pin('기흥IC입구','기흥IC입구 · 18:23',92,['내 정류장','route'])}
+  <div style="left:${STOPS['경희대정문'][0]-10}px;top:${STOPS['경희대정문'][1]}px;transform:translate(-100%,-50%);background:#fff;border:1px solid var(--line);border-radius:9px;padding:3px 8px 4px;box-shadow:0 1px 4px rgba(0,0,0,.1);line-height:1.25">
+    <div style="font-size:10px;color:var(--faint)">경희대정문</div><div style="font-size:12px;font-weight:700;color:var(--muted)">지날 때 38석</div></div>
+  ${bus(283.5,227.6,'4석','dim')}${bus(227,290,'18석','dim')}${bus(94.8,410,'44석','dim')}${bus(158,353,'37석','sel')}</div>
+  ${status('18:12')}${back('도착 순서')}
+  <div class="sheet" style="gap:14px">
+    <div class="handle"></div>
+    <div class="row">
+      <span style="width:40px;height:40px;border-radius:50%;background:var(--route);display:grid;place-items:center;flex:none">${BUS_ICON.replace('width="16" height="16"','width="20" height="20"')}</span>
+      <div style="flex:1"><div style="font-size:18px;font-weight:900">M5107 · 3번째로 오는 버스</div><div class="sub">경희대정문 지남 · 영통역으로 가는 중</div></div><span style="color:var(--faint);font-weight:700">✕</span>
+    </div>
+    <div class="nowbar row between"><span class="row" style="gap:8px;font-size:13px;font-weight:700"><i></i>지금 잔여석</span><b style="font-size:20px;font-weight:900">37석</b></div>
+    <div class="prob">
+      <div class="row between"><div><div style="font-size:14px;font-weight:700;color:var(--blue)">기흥IC입구 도착 시 남을 확률</div><div class="sub">18:23 도착 예정 · 11분 후</div></div><span class="chip" style="background:#fff;color:var(--blue);font-size:10px">예측</span></div>
+      ${bar('1석 이상',92)}${bar('5석 이상',71)}${bar('10석 이상',38)}
+    </div>
+    <div class="list">
+      <div style="font-size:13px;font-weight:700;color:var(--muted)">이 버스가 지나갈 정류장</div>
+      ${[['18:09','경희대정문','지날 때 38석','past'],['18:15','영통역','약 31석 남음','',99],['18:19','청명역','약 22석 남음','',97],['18:23','기흥IC입구','약 14석 남음','mine',92]].map(([t,n,s,k,p])=>
+        `<div class="item-row"><b style="width:42px;font-size:13px;color:${k==='past'?'var(--faint)':'var(--ink2)'}">${t}</b>
+         <span style="flex:1;font-size:15px;font-weight:${k==='mine'?900:700};color:${k==='past'?'var(--faint)':'var(--ink)'}">${n} ${k==='mine'?'<span class="tag route">내 정류장</span>':''}</span>
+         <span style="font-size:12px;font-weight:500;color:${k==='past'?'var(--faint)':'var(--blue)'}">${s}</span>${p?pc(p):'<span class="chip gray">실측</span>'}</div>`).join('')}
+    </div>
+    <div class="key"><span><i style="background:var(--ink)"></i>지금 · 실측</span><span><i style="background:var(--blue)"></i>도착 시 · 예측</span><span><i style="background:var(--faint)"></i>지난 정류장 · 기록</span></div>
+  </div>`;
+
+// ---------- 03 어디서 타야 빨리 앉나 ----------
+const [gx,gy] = STOPS['기흥IC입구'], [cx,cy] = STOPS['청명역'];
+const s3 = () => `${MAP}
+  <svg class="map" viewBox="0 0 390 844"><path d="M${gx+4} ${gy+10} C ${gx+30} ${gy+40} ${cx+40} ${cy-6} ${cx+8} ${cy+6}" stroke="#1F5FBF" stroke-width="3.5" stroke-dasharray="2 7" stroke-linecap="round" fill="none"/></svg>
+  ${pin('경희대학교','경희대학교 · 18:33',99)}${pin('경희대정문','경희대정문 · 18:30',99)}${pin('영통역','영통역 · 18:25',99)}
+  ${pin('청명역','청명역 · 18:19',83,['추천 · 가장 빨리','blue'])}${pin('기흥IC입구','기흥IC입구 · 18:23',92,['내 정류장','route'])}
+  ${BUSES.map(b=>bus(...b)).join('')}
+  <div style="left:${gx+18}px;top:${gy+26}px;background:#fff;border:1.5px solid var(--blue);border-radius:9px;padding:3px 8px 4px;font-size:11px;font-weight:700;color:var(--blue);white-space:nowrap">도보 8분</div>
+  <div style="left:${gx+6}px;top:${gy-26}px;width:18px;height:18px;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 8px rgba(31,95,191,.3)"></div>
+  ${status('18:12')}${back('지도')}<div class="float dark" style="right:16px;top:52px">1석 이상 기준</div>
+  <div class="sheet">
+    <div class="handle"></div>
+    <div><div class="h2">어디서 타야 가장 빨리 앉을까</div><div class="sub">지금 18:12 출발 · 이동 시간 포함 · 1석 이상 남을 버스</div></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${[[1,'청명역',['추천','blue'],'도보 8분 · 다음 버스(지금 18석)','18:19',83],[2,'기흥IC입구',['지금 위치','route'],'대기 · 2대 보내고 3번째 버스','18:23',92],[3,'영통역',null,'역방향 버스 13분 · 4번째 버스','18:25',99],[4,'경희대정문',null,'이동 21분 · 5번째 버스','18:30',99]].map(([r,n,t,s,time,p])=>
+        `<div class="rank ${r===1?'best':''}"><span class="no">${r}</span>
+          <div style="flex:1"><div style="font-size:15px;font-weight:700">${n} ${t?`<span class="tag ${t[1]}">${t[0]}</span>`:''}</div><div class="sub">${s}</div></div>
+          <div style="text-align:right"><div><b style="font-size:18px;font-weight:900;color:${r===1?'var(--blue)':'var(--ink)'}">${time}</b> <span class="sub" style="font-size:11px">탑승</span></div>${pc(p)}</div></div>`).join('')}
+    </div>
+    <div class="cta">청명역까지 걸어가기 · 18:11 출발해야 해요</div>
+  </div>`;
+
+// ---------- 04 계속 붐빌 때 ----------
+const VALS = [55,42,30,18,12,8,21,44,63,76,84,88,91,93,95,96];
+const s4 = () => `<div class="layer" style="transform:translateY(-70px)">${MAP}
+  ${pin('기흥IC입구','기흥IC입구 · 지금',8,['내 정류장','route'])}</div>
+  ${status('18:05')}${back('지도')}
+  <div class="sheet" style="gap:14px">
+    <div class="handle"></div>
+    <div><div class="sub">기흥IC입구 · 금요일 퇴근 시간 · 1석 이상</div><div class="h2">18:41 버스부터 앉아서 갈 수 있어요</div>
+      <div style="font-size:13px;font-weight:500;color:var(--ink2);margin-top:2px">18:40까지는 오는 버스마다 거의 만석이에요. 지금부터 36분 뒤예요.</div></div>
+    <div class="chart">
+      <div class="row between"><b style="font-size:13px;color:var(--ink2)">시간대별 탑승 확률</b><span style="font-size:11px;color:var(--faint)">최근 4주 금요일 기준</span></div>
+      <div class="bars">
+        ${VALS.map(v=>`<i style="height:${Math.max(3,v)}%;background:${color(v)}"></i>`).join('')}
+        <div class="th" style="bottom:70%"><span style="position:absolute;left:0;top:-15px;font-size:10px;font-weight:700;color:var(--ink2)">70% 기준</span></div>
+        <div class="now" style="left:${(3.5/16)*100}%"><span class="tag route" style="position:absolute;top:-18px;left:-14px;font-size:9px">지금</span></div>
+      </div>
+      <div class="xlab">${[[0,'17:30'],[3,'18:00'],[6,'18:30'],[9,'19:00'],[12,'19:30'],[15,'20:00']].map(([k,l])=>`<span style="left:${(k+0.5)/16*100}%">${l}</span>`).join('')}</div>
+    </div>
+    <div class="up">
+      <div style="border:0;padding-bottom:2px" class="between"><b style="font-size:13px;color:var(--muted)">다가오는 버스</b><span style="font-size:11px;color:var(--faint)">지금 잔여석 → 도착 시 확률</span></div>
+      ${[['18:09','이번','2석',8],['18:16','다음','9석',21],['18:24','3번째','15석',44],['18:33','4번째','22석',63],['18:41','5번째','33석',74,1]].map(([t,l,s,p,b])=>
+        `<div class="${b?'best':''}"><span class="t" style="color:${b?'var(--blue)':'var(--ink)'}">${t}</span><span style="flex:1;font-size:13px;color:var(--muted)">${l} ${b?'<span class="tag blue">첫 추천</span>':''}</span><span class="chip now">지금 ${s}</span>${pc(p)}</div>`).join('')}
+    </div>
+    <div class="row" style="gap:6px"><span class="chip gray">지난 기록</span><span style="font-size:12px;color:var(--faint)">지난주 금요일 18:43 버스는 6석 남기고 도착했어요</span></div>
+    <div class="cta">18:35에 나가라고 알려주기</div>
+  </div>`;
+
+const SCREENS = [
+  ['01 지도 홈','정류장별 탑승 확률 · 몇 대 보낼지', s1],
+  ['02 버스 선택','도착 시 1/5/10석 확률', s2],
+  ['03 정류장 비교','어디서 타야 가장 빨리 앉나', s3],
+  ['04 계속 붐빌 때','몇 시에 탈 수 있나', s4],
+];
+const board = document.getElementById('board'), tabs = document.getElementById('tabs');
+board.innerHTML = SCREENS.map(([t,d,f],i)=>`<section class="item" data-i="${i}"><h2>${t}<span>${d}</span></h2><div class="phone">${f()}</div></section>`).join('');
+tabs.innerHTML = `<button data-i="all" class="on">모두 보기</button>` + SCREENS.map(([t],i)=>`<button data-i="${i}">${t}</button>`).join('');
+const items = [...board.children];
+function show(i){
+  [...tabs.children].forEach(b=>b.classList.toggle('on', b.dataset.i===String(i)));
+  board.classList.toggle('single', i!=='all');
+  items.forEach(el=>el.classList.toggle('on', i==='all' ? el.dataset.i==='0' : el.dataset.i===String(i)));
+}
+tabs.onclick = e => { const b = e.target.closest('button'); if (b) show(b.dataset.i==='all' ? 'all' : Number(b.dataset.i)); };
+show('all');
+document.querySelectorAll('.phone').forEach(ph=>{const sh=ph.querySelector('.sheet'); ph.querySelectorAll('[data-above]').forEach(el=>{el.style.bottom=(sh.offsetHeight+Number(el.dataset.above))+'px';});});
+</script>
+</body>
+</html>
