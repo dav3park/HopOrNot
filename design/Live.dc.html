@@ -182,27 +182,43 @@ button{font-family:inherit}
 <div style="position: absolute; right: 0; top: 0; bottom: 0; width: 34px; background: linear-gradient(270deg, #FFFFFF, rgba(255,255,255,0)); pointer-events: none"></div>
 <div style="position: absolute; left: 12px; bottom: 8px; font-size: 11px; font-weight: 600; color: #6C6C70; pointer-events: none">‹ 이전 {{hiddenLeft}}개</div>
 <div style="position: absolute; right: 12px; bottom: 8px; font-size: 11px; font-weight: 600; color: #6C6C70; pointer-events: none">다음 {{hiddenRight}}개 ›</div>
-</div>
-
-<div style="padding: 0 16px; min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 8px">
-<div style="font-size: 13px; color: #6C6C70">{{viewLabel}}</div>
 <sc-if value="{{panned}}" hint-placeholder-val="{{false}}">
-<button onClick="{{goBus}}" style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 18px; background: #007AFF; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer">내 버스로</button>
+<button onClick="{{goBus}}" style="position: absolute; right: 12px; top: 12px; min-height: 32px; padding: 0 14px; border: 0; border-radius: 16px; background: #007AFF; color: #FFFFFF; font-size: 13px; font-weight: 600; cursor: pointer">내 버스로</button>
 </sc-if>
 </div>
 
-<div style="margin: 0 16px; padding: 14px 16px 12px; border-radius: 18px; background: #FFFFFF; display: flex; flex-direction: column; gap: 12px">
-<div style="position: relative; width: 326px; height: 18px">
-<div style="position: absolute; left: 0; right: 0; top: 7px; height: 4px; border-radius: 2px; background: #E5E5EA"></div>
-<div style="position: absolute; top: 0; width: 2px; height: 18px; background: #1C1C1E; left: {{ovMyX}}px"></div>
-<div style="{{ovWindowStyle}}"></div>
-<div style="position: absolute; top: 3px; left: {{ovBusX}}px; width: 12px; height: 12px; border-radius: 6px; background: {{accent}}; border: 2px solid #FFFFFF; box-sizing: border-box; box-shadow: 0 0 0 1px {{accent}}"></div>
+<div style="margin: 0 16px; padding: 12px 14px; border-radius: 18px; background: #FFFFFF; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<span style="font-size: 13px; font-weight: 700; color: #1C1C1E">빈자리 예측 · 이 버스 기준</span>
+<span style="font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: #EAF1FB; color: #1F5FBF">AI 예측</span>
 </div>
-<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
-<button onClick="{{goStart}}" style="min-height: 44px; border: 0; border-radius: 12px; background: #F2F2F7; color: #1C1C1E; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px"><span>기점</span><span style="font-size: 11px; font-weight: 500; color: #6C6C70; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{fromName}}</span></button>
-<button onClick="{{goBus}}" style="min-height: 44px; border: 0; border-radius: 12px; background: #F2F2F7; color: #007AFF; font-size: 13px; font-weight: 700; cursor: pointer">내 버스</button>
-<button onClick="{{goEnd}}" style="min-height: 44px; border: 0; border-radius: 12px; background: #F2F2F7; color: #1C1C1E; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px"><span>종점</span><span style="font-size: 11px; font-weight: 500; color: #6C6C70; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{toName}}</span></button>
+<sc-if value="{{hasSeatRows}}" hint-placeholder-val="{{true}}">
+<div style="display: grid; grid-template-columns: 92px repeat(3, minmax(0, 1fr)); gap: 6px; align-items: center">
+<span></span>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 2px"><div style="display: flex; gap: 2px"><span style="width: 7px; height: 9px; border-radius: 2px 2px 1px 1px; background: #3A3A3C"></span></div><span style="font-size: 11px; font-weight: 700; color: #3A3A3C">1석 이상</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 2px"><div style="display: flex; gap: 2px"><span style="width: 7px; height: 9px; border-radius: 2px 2px 1px 1px; background: #3A3A3C"></span><span style="width: 7px; height: 9px; border-radius: 2px 2px 1px 1px; background: #3A3A3C"></span></div><span style="font-size: 11px; font-weight: 700; color: #3A3A3C">5석 이상</span></div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 2px"><div style="display: flex; gap: 2px"><span style="width: 7px; height: 9px; border-radius: 2px 2px 1px 1px; background: #3A3A3C"></span><span style="width: 7px; height: 9px; border-radius: 2px 2px 1px 1px; background: #3A3A3C"></span><span style="width: 7px; height: 9px; border-radius: 2px 2px 1px 1px; background: #3A3A3C"></span></div><span style="font-size: 11px; font-weight: 700; color: #3A3A3C">10석 이상</span></div>
+<sc-for list="{{seatRows}}" as="r" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="{{r.nameStyle}}">{{r.name}}</span>
+<sc-if value="{{r.my}}" hint-placeholder-val="{{false}}">
+<span style="align-self: flex-start; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 5px; background: {{accent}}; color: #FFFFFF">내 정류장</span>
+</sc-if>
 </div>
+<sc-for list="{{r.cells}}" as="c" hint-placeholder-count="3">
+<div style="position: relative; height: 30px; border-radius: 8px; background: #F2F2F7; overflow: hidden; display: flex; align-items: center; justify-content: center">
+<div style="{{c.washStyle}}"></div>
+<div style="{{c.barStyle}}"></div>
+<span style="{{c.txtStyle}}">{{c.pct}}</span>
+</div>
+</sc-for>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{noSeatRows}}" hint-placeholder-val="{{false}}">
+<div style="font-size: 13px; color: #6C6C70; padding: 8px 0">종점 도착. 남은 정류장이 없음</div>
+</sc-if>
+<div style="font-size: 11px; color: #6C6C70">1석 이상 = 탈 수 있을 확률</div>
 </div>
 </div>
 
@@ -435,6 +451,26 @@ class Component extends DCLogic {
       return { style: 'position: absolute; top: 104px; left: ' + (b.pos * SP - 18) + 'px; width: 36px; height: 24px; opacity: ' + (hidden ? 0 : 0.55) + '; transform-origin: 50% 100%; transform: scale(' + s.toFixed(3) + '); transition: ' + (b.jump ? 'opacity .3s ease' : 'left 3s linear, transform .45s ' + BOUNCE + ', opacity .3s ease') + ';' };
     });
 
+    var seatRows = [];
+    if (!atEnd) {
+      for (var si = nextIdx; si <= Math.min(nextIdx + 2, span); si++) {
+        var p1 = prob(tb, si, span);
+        seatRows.push({
+          name: stops[si], my: si === my,
+          nameStyle: 'font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ' + (si === my ? 'font-weight: 800; color: ' + accent + ';' : 'font-weight: 600; color: #1C1C1E;'),
+          cells: [p1, p1 * 0.62, p1 * 0.24].map(function (p) {
+            var w = Math.round(p * 100);
+            return {
+              pct: w + '%',
+              washStyle: 'position: absolute; left: 0; top: 0; bottom: 0; width: ' + w + '%; background: ' + fillOf(p) + '; opacity: 0.18; transition: width .45s ease;',
+              barStyle: 'position: absolute; left: 0; bottom: 0; height: 3px; width: ' + w + '%; background: ' + fillOf(p) + '; transition: width .45s ease;',
+              txtStyle: 'position: relative; font-size: 14px; font-weight: 800; color: ' + textOf(p) + '; font-variant-numeric: tabular-nums;'
+            };
+          })
+        });
+      }
+    }
+
     var busScale = bub(Math.abs(pan) / SP);
     var lineVisible = phase === 'line';
     var d = Math.round(-pan / SP);
@@ -475,6 +511,7 @@ class Component extends DCLogic {
       hiddenLeft: Math.max(0, Math.ceil(vc - HALF)), hiddenRight: Math.max(0, span - Math.floor(vc + HALF)),
       panned: Math.abs(pan) > 4,
       viewLabel: d === 0 ? '좌우로 밀어서 정류장별 탑승 확률 보기' : d > 0 ? '내 버스보다 ' + d + '정류장 뒤를 보는 중' : '내 버스보다 ' + (-d) + '정류장 앞을 보는 중',
+      seatRows: seatRows, hasSeatRows: seatRows.length > 0, noSeatRows: seatRows.length === 0,
       ovBusX: pos / span * W - 6, ovMyX: my / span * W - 1,
       ovWindowStyle: 'position: absolute; top: 0; height: 18px; border-radius: 9px; background: rgba(0,122,255,0.12); border: 1.5px solid #007AFF; box-sizing: border-box; left: ' + winL + 'px; width: ' + Math.max(18, winR - winL) + 'px; transition: ' + (st.dragging ? 'none' : 'left 0.35s ease, width 0.35s ease') + ';',
       down: this.down, move: this.move, up: this.up, goBus: this.goBus, goStart: this.goStart, goEnd: this.goEnd, backToStrings: this.backToStrings
