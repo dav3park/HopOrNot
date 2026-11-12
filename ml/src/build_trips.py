@@ -100,17 +100,16 @@ def key_segment(events: pd.DataFrame) -> pd.Series:
     return result
 
 
-def main():
-    observations = pd.read_parquet(RAW_DIR / "bus_observation.parquet")
-    stops = pd.read_parquet(INTERIM_DIR / "stops.parquet")
-
-    trips = assign_trips(observations)
+def arrival_events(trips: pd.DataFrame, stops: pd.DataFrame) -> pd.DataFrame:
+    """운행마다 예측 대상 정류장의 도착 잔여석과 그 값을 알게 된 시각. 학습과 실시간 추론이 같은 함수를 쓴다."""
     events = []
     for route in ROUTES:
         route_stops = stops[stops["route"] == route.name]
         for _, trip in trips[trips["route_id"] == route.route_id].groupby("trip_id"):
             events.extend(trip_events(trip, route_stops))
     result = pd.DataFrame(events)
+    if result.empty:
+        return result
 
     for column in ("arrived_at", "known_at"):
         result[column] = pd.to_datetime(result[column]).dt.tz_convert(TIMEZONE)
@@ -120,6 +119,15 @@ def main():
     result["ambiguous"] = (low != high) | (result["source"] == "mixed")
     result["stage"] = pd.array(np.where(result["ambiguous"], -1, low), dtype="Int8")
     result.loc[result["ambiguous"], "stage"] = pd.NA
+    return result
+
+
+def main():
+    observations = pd.read_parquet(RAW_DIR / "bus_observation.parquet")
+    stops = pd.read_parquet(INTERIM_DIR / "stops.parquet")
+
+    trips = assign_trips(observations)
+    result = arrival_events(trips, stops)
 
     result.to_parquet(INTERIM_DIR / "arrival_events.parquet", index=False)
     print(f"운행 {trips['trip_id'].nunique():,}개, 도착 이벤트 {len(result):,}개, 애매한 라벨 {result['ambiguous'].mean():.1%}")

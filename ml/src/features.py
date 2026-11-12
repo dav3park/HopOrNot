@@ -49,27 +49,44 @@ def with_fleet(trips: pd.DataFrame) -> pd.DataFrame:
     return trips
 
 
-def base_samples(trips: pd.DataFrame, events: pd.DataFrame, stops: pd.DataFrame) -> pd.DataFrame:
-    """관측마다 같은 운행의 앞쪽 도착 이벤트를 붙인다."""
-    observed = trips.rename(columns={
+def observed_rows(trips: pd.DataFrame) -> pd.DataFrame:
+    """관측(시점 t의 차량 상태)을 예측 행의 현재 상태 열로 바꾼다."""
+    return trips.rename(columns={
         "collected_at": "observed_at", "station_seq": "current_seq", "remain_seat_cnt": "current_seats",
     })[["trip_id", "veh_id", "route", "observed_at", "current_seq", "current_seats", "state_cd", "active_buses", "front_seats",
         "front_seq_gap"]]
-    labels = events.rename(columns={"station_seq": "target_seq", "station_id": "target_station_id"}).drop(
-        columns=["route", "veh_id", "known_at", "service_date", "station_name"])
-    samples = observed.merge(labels, on="trip_id")
-    samples = samples[(samples["target_seq"] > samples["current_seq"]) & (samples["arrived_at"] > samples["observed_at"])]
 
+
+def candidate_targets(observed: pd.DataFrame, stops: pd.DataFrame) -> pd.DataFrame:
+    """관측마다 앞으로 지날 예측 대상 정류장(실제 정류장 기준 MAX_STOPS_AHEAD개 안)을 붙인다.
+
+    학습과 실시간 추론이 같은 함수를 쓴다. 학습은 여기에 정답(도착 이벤트)을 붙인다.
+    """
     ranks = stops.assign(real_rank=(~stops["is_checkpoint"]).groupby(stops["route"]).cumsum())
-    ranks = ranks[["route", "station_seq", "real_rank"]]
-    samples = samples.merge(ranks.rename(columns={"station_seq": "current_seq", "real_rank": "current_rank"}),
-                            on=["route", "current_seq"])
-    samples = samples.merge(ranks.rename(columns={"station_seq": "target_seq", "real_rank": "target_rank"}),
-                            on=["route", "target_seq"])
-    samples["stops_ahead"] = samples["target_rank"] - samples["current_rank"]
-    samples["checkpoints_ahead"] = samples["target_seq"] - samples["current_seq"] - samples["stops_ahead"]
-    samples = samples[samples["stops_ahead"] <= MAX_STOPS_AHEAD]
-    return samples.drop(columns=["current_rank", "target_rank"]).reset_index(drop=True)
+    targets = ranks.loc[ranks["is_target"], ["route", "station_seq", "station_id", "direction", "zone", "real_rank"]].rename(
+        columns={"station_seq": "target_seq", "station_id": "target_station_id", "real_rank": "target_rank"})
+    current = ranks[["route", "station_seq", "real_rank"]].rename(columns={"station_seq": "current_seq", "real_rank": "current_rank"})
+    rows = observed.merge(current, on=["route", "current_seq"]).merge(targets, on="route")
+    rows = rows[rows["target_seq"] > rows["current_seq"]]
+    rows["stops_ahead"] = rows["target_rank"] - rows["current_rank"]
+    rows["checkpoints_ahead"] = rows["target_seq"] - rows["current_seq"] - rows["stops_ahead"]
+    rows = rows[rows["stops_ahead"] <= MAX_STOPS_AHEAD]
+    return rows.drop(columns=["current_rank", "target_rank"]).reset_index(drop=True)
+
+
+def base_samples(trips: pd.DataFrame, events: pd.DataFrame, stops: pd.DataFrame) -> pd.DataFrame:
+    """관측마다 같은 운행의 앞쪽 도착 이벤트(정답)를 붙인다."""
+    labels = events.rename(columns={"station_seq": "target_seq"})[
+        ["trip_id", "target_seq", "arrived_at", "seats_low", "seats_high", "source", "key_segment", "ambiguous", "stage"]]
+    samples = candidate_targets(observed_rows(trips), stops).merge(labels, on=["trip_id", "target_seq"])
+    return samples[samples["arrived_at"] > samples["observed_at"]].reset_index(drop=True)
+
+
+def add_features(rows: pd.DataFrame, events: pd.DataFrame, stops: pd.DataFrame, profile: pd.DataFrame) -> pd.DataFrame:
+    """시간, 앞차 기록, 평소 수요 특징. 학습과 실시간 추론이 같은 함수를 쓴다."""
+    rows = add_time(rows)
+    rows = add_lead(rows, events)
+    return add_demand(rows, demand_table(stops, profile))
 
 
 def add_time(samples: pd.DataFrame) -> pd.DataFrame:
@@ -155,10 +172,7 @@ def main():
     trips["route"] = trips["route_id"].map(names)
     trips = with_fleet(trips)
 
-    samples = base_samples(trips, events, stops)
-    samples = add_time(samples)
-    samples = add_lead(samples, events)
-    samples = add_demand(samples, demand_table(stops, profile))
+    samples = add_features(base_samples(trips, events, stops), events, stops, profile)
     samples = add_targets(samples)
 
     samples.to_parquet(INTERIM_DIR / "samples.parquet", index=False)

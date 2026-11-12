@@ -6,3 +6,4 @@ models/
 .ipynb_checkpoints/
 __pycache__/
 .venv/
+!fieldtest/records.csv
