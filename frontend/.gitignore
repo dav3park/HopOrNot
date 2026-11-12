@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+dist/
+.env
+.env.local
+*.tsbuildinfo
+dist-web/
+
+# App source and public route snapshots (override repository-wide data/ ignore)
+!src/data/
+!src/data/**
