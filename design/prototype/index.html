@@ -28,6 +28,7 @@ svg{display:block}
 .pulse{animation:pulse 1.4s ease-out infinite}
 @keyframes ring{0%{transform:scale(1);opacity:1}100%{transform:scale(1.9);opacity:0}}
 .ring{animation:ring 1.6s ease-out infinite}
+button svg rect{transition:fill .6s ease}
 </style>
 </head>
 <body>
@@ -151,8 +152,13 @@ class App extends Component {
     var rankOf = {};
     coming.forEach(function (b, r) { rankOf[b.id] = r; });
     var cnt = coming.length;
-    var sx = function (r) { return SX0 + (r + 0.5) * SXW / Math.max(cnt, 1); };
-    var colW = Math.min(58, SXW / Math.max(cnt, 1) - 2);
+    var shown = buses.filter(function (b) { return b.pos <= my + 0.25 + 1e-6; }).sort(function (a, b) { return b.pos - a.pos; });
+    var colOf = {};
+    shown.forEach(function (b, c) { colOf[b.id] = c; });
+    var COLS = 6, STEP = SXW / COLS;
+    var sx = function (c) { return SX0 + (c + 0.5) * STEP; };
+    var colW = STEP - 2;
+    var EASE = '.9s cubic-bezier(.2,.8,.2,1)';
     var gap = (FB - FT) / span;
     var fy = function (p) { return FB - p * gap; };
     var etaMin = function (b, stop) { return (stop - b.pos) * MIN_PER_STOP; };
@@ -194,42 +200,42 @@ class App extends Component {
     });
 
     var strings = coming.map(function (b, r) {
-      var x = sx(r), p = prob(b, my, span), rec = r === waitR;
+      var x = sx(colOf[b.id]), p = prob(b, my, span), rec = r === waitR;
       return {
         id: b.id, label: rec ? '추천' : ordinal(r), eta: etaOf(b), pct: pct(p),
         pctStyle: 'font-size: 12px; font-weight: 800; color: ' + textOf(p) + ';',
-        headStyle: 'position: absolute; top: 292px; left: ' + (x - colW / 2) + 'px; width: ' + colW + 'px; height: 54px; box-sizing: border-box; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: left .45s ease, width .45s ease; ' + (rec ? 'border: 1.5px solid #1F5FBF; background: #EAF1FB;' : 'border: 1.5px solid transparent;'),
-        highStyle: 'position: absolute; top: ' + (FT - 8) + 'px; height: ' + Math.max(0, fy(my) - FT + 8) + 'px; left: ' + (x - 0.5) + 'px; width: 1px; background: #E5E5EA; transition: left .45s ease;',
-        lowStyle: 'position: absolute; top: ' + fy(my) + 'px; height: ' + (FB + 12 - fy(my)) + 'px; left: ' + (x - 1) + 'px; width: 2px; background: #AEAEB2; transition: left .45s ease;'
+        headStyle: 'position: absolute; top: 292px; left: ' + (x - colW / 2) + 'px; width: ' + colW + 'px; height: 54px; box-sizing: border-box; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: left ' + EASE + ', width .45s ease; ' + (rec ? 'border: 1.5px solid #1F5FBF; background: #EAF1FB;' : 'border: 1.5px solid transparent;'),
+        highStyle: 'position: absolute; top: ' + (FT - 8) + 'px; height: ' + Math.max(0, fy(my) - FT + 8) + 'px; left: ' + (x - 0.5) + 'px; width: 1px; background: #E5E5EA; transition: left ' + EASE + ';',
+        lowStyle: 'position: absolute; top: ' + fy(my) + 'px; height: ' + (FB + 12 - fy(my)) + 'px; left: ' + (x - 1) + 'px; width: 2px; background: #AEAEB2; transition: left ' + EASE + ';'
       };
     });
 
     var nodes = [];
     coming.forEach(function (b, r) {
-      var x = sx(r);
+      var x = sx(colOf[b.id]);
       for (var i = Math.ceil(b.pos - 1e-6); i <= my; i++) {
         var p = prob(b, i, span), s = i === my ? 14 : 10;
-        nodes.push({ key: b.id + '-' + i, style: 'position: absolute; left: ' + (x - s / 2) + 'px; top: ' + (fy(i) - s / 2) + 'px; width: ' + s + 'px; height: ' + s + 'px; border-radius: ' + s + 'px; background: ' + fillOf(p) + '; box-shadow: 0 0 0 2px #FFFFFF; transition: left .45s ease;' });
+        nodes.push({ key: b.id + '-' + i, style: 'position: absolute; left: ' + (x - s / 2) + 'px; top: ' + (fy(i) - s / 2) + 'px; width: ' + s + 'px; height: ' + s + 'px; border-radius: ' + s + 'px; background: ' + fillOf(p) + '; box-shadow: 0 0 0 2px #FFFFFF; transition: left ' + EASE + ';' });
       }
     });
     var marks = [];
     var markAt = function (k, r, i, color) {
-      var x = sx(r), y = fy(i);
+      var x = sx(colOf[coming[r].id]), y = fy(i);
       marks.push({ key: k, style: 'position: absolute; left: ' + (x - 11) + 'px; top: ' + (y - 11) + 'px; width: 22px; height: 22px; border-radius: 11px; border: 2px solid ' + color + '; box-sizing: border-box; pointer-events: none;' });
     };
     if (waitR >= 0) markAt('wait', waitR, my, '#1F5FBF');
     if (mv) markAt('move', mv.r, mv.j, '#1C1C1E');
 
     var fleet = buses.map(function (b) {
-      var r = rankOf[b.id], vis = r !== undefined;
-      var x = sx(vis ? r : Math.max(cnt - 1, 0)), y = fy(Math.min(b.pos, span));
+      var r = rankOf[b.id], vis = r !== undefined, col = colOf[b.id], leaving = col !== undefined && !vis;
+      var x = sx(col !== undefined ? col : COLS - 1), y = fy(Math.min(b.pos, span));
       var hideForFly = st.tracked === b.id && phase !== 'strings';
       var stopped = isInt(b.pos);
       return {
-        id: b.id, color: accent, trail: R.trail, stopped: stopped,
+        id: b.id, color: leaving ? '#AEAEB2' : accent, trail: leaving ? 'rgba(174,174,178,0.5)' : R.trail, stopped: stopped,
         aria: (vis ? ordinal(r) + ' 버스, 내 정류장 탑승 확률 ' + pct(prob(b, my, span)) : '버스') + ', 실시간 노선 보기',
         pick: function () { self.pickBus(b.id, x, y); },
-        style: 'position: absolute; left: ' + (x - 22) + 'px; top: ' + (y - 22) + 'px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; opacity: ' + (vis && !hideForFly ? 1 : 0) + '; pointer-events: ' + (vis ? 'auto' : 'none') + '; transition: ' + (b.jump ? 'opacity .6s ease' : 'left .45s ease, top 3s linear, opacity .4s ease') + ';'
+        style: 'position: absolute; left: ' + (x - 22) + 'px; top: ' + (y - 22) + 'px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; opacity: ' + ((vis || leaving) && !hideForFly ? (leaving ? 0 : 1) : 0) + '; transform: scale(' + (leaving ? 0.25 : 1) + '); pointer-events: ' + (vis ? 'auto' : 'none') + '; transition: ' + (b.jump ? 'opacity .6s ease' : (leaving ? 'top 3s linear, opacity 1s ease .5s, transform 1.4s ease' : 'left ' + EASE + ', top 3s linear, opacity .4s ease, transform .4s ease')) + ';'
       };
     });
 
