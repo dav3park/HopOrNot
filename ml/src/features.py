@@ -4,7 +4,7 @@
 출력: data/interim/samples.parquet
 
 한 행은 "시점 t에 정류장 p에 있는 차량이 앞쪽 정류장 s에 도착할 때"다.
-날씨와 학기·시험기간 특징은 아직 없다 (README 5장).
+날씨 특징은 아직 없다. 경희대 학사일정은 쓰지 않는다 (README 5장).
 """
 import numpy as np
 import pandas as pd

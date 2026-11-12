@@ -63,8 +63,8 @@ HOLIDAYS = frozenset(date.fromisoformat(d) for d in (
 
 NO_SEAT_INFO = -1  # remain_seat_cnt 정보 없음. 0석(만석)과 다르다
 
-# 단계별 최소 잔여석: 0석 / 1–4석 / 5–9석 / 10석 이상
-STAGE_MIN_SEATS = (0, 1, 5, 10)
+# 단계별 최소 잔여석: 0석 / 1–4석 / 5–9석 / 10–19석 / 20석 이상
+STAGE_MIN_SEATS = (0, 1, 5, 10, 20)
 
 MAX_STOPS_AHEAD = 20  # 실제 정류장 기준 몇 개 앞까지 예측할지 (열린 질문, README 13장)
 KEY_WEIGHT = 3  # 학습에서 핵심 구간 샘플의 가중치
