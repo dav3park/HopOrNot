@@ -1,7 +1,7 @@
 """대기 인원 모델과 "내가 앉을 확률" (DECISIONS.md 실제 탑승 확률 B안).
 
 입력: data/interim/{arrival_events,boarding_profile,samples}.parquet, data/predictions/lgbm.parquet
-출력: data/interim/boardings.parquet (버스 1대당 탑승 인원), models/waiting.json (모델 계수),
+출력: data/interim/boardings.parquet (버스 묶음당 탑승 인원), models/waiting.json (모델 계수),
       models/waiting_cells.parquet (정류장·시간대별 칸 보정, 실시간 추론용)
 
     P(내가 앉음) = Σ_s P(도착 잔여석 = s) × P(내 앞 인원 < s)
@@ -26,6 +26,12 @@ CELL_SMOOTHING 명만큼 1배 쪽으로 당긴다. 만석으로 떠난 버스는
 탑승 인원은 도착 잔여석 − 다음 정류장 도착 잔여석이므로, 2025 하차가 승차의 ONE_WAY_RATIO 이하인
 정류장·시간만 쓴다.
 
+**버스 몰림**: 같은 노선 버스가 BUNCH_MINUTES 안에 연달아 오면 한 묶음으로 본다. 피크 수집 간격이 2분이라
+그보다 가까운 두 버스는 누가 먼저 왔는지 알 수 없고, 대기 줄을 함께 소화한다. 학습 단위는 묶음이다.
+묶음의 탑승 인원은 버스들의 탑승 합, 좌석은 도착 잔여석 합이고, 모든 버스가 만석으로 떠났을 때만 중도 절단이다.
+경과 시간은 앞 묶음의 마지막 도착부터 잰다. "그 정류장에 마지막으로 관측된 시각"을 떠난 시각으로 쓰면 안 된다.
+정류장 순번은 마지막으로 지난 정류장이라 state_cd 0·2인 관측은 이미 떠나 이동 중이다 (시험해 보니 적합도가 나빠짐).
+
 이전 방식(앞차 만석이면 평균에 ×e^b를 곱함)은 혼잡 정류장에서 "내 앞 83명" 같은 값을 내서 바꿨다.
 같은 평가에서 비교하려고 legacy_* 로 남긴다.
 """
@@ -48,6 +54,7 @@ CELL = ["route", "station_id", "hour"]
 CELL_SMOOTHING = 20  # 칸 보정에서 1단계 예측을 몇 명분으로 칠지
 MAX_WAITING = 400    # 남은 사람 기댓값을 계산할 때 대기 인원 상한
 BETA_BOUNDS = (0.0, 1.0)
+BUNCH_MINUTES = 2.0  # 이 간격 안에 온 같은 노선 버스는 한 묶음 (피크 수집 간격)
 THETA_NAMES = ["a_출발권", "a_서울권", "γ (승차율×경과)", "c (칸 보정, 1 고정)"]
 
 
@@ -72,8 +79,8 @@ def day_type_of(local: pd.Series) -> np.ndarray:
     return np.where(local.dt.day_of_week < 5, "평일", np.where(local.dt.day_of_week == 5, "토요일", "일요일·공휴일"))
 
 
-def boarding_events() -> pd.DataFrame:
-    """버스 1대 × 정류장마다 탑승 인원, 앞차 이후 경과 시간, 앞차의 상태(만석 출발, 도착 잔여석, 그 앞 간격)."""
+def bus_events() -> pd.DataFrame:
+    """버스 1대 × 정류장: 도착 잔여석, 떠날 때 잔여석, 탑승 인원, 2025 승하차."""
     events = pd.read_parquet(INTERIM_DIR / "arrival_events.parquet").sort_values(["trip_id", "station_seq"])
     exact = events["seats_low"] == events["seats_high"]
     following = events.groupby("trip_id")[["seats_low"]].shift(-1)
@@ -90,21 +97,40 @@ def boarding_events() -> pd.DataFrame:
                           how="left", on=["route", "station_id", "day_type", "hour"])
     events[["boardings", "alightings"]] = events[["boardings", "alightings"]].fillna(0)
     events["rate"] = np.maximum(events["boardings"] / 60, MIN_RATE_PER_MINUTE)
+    return events.sort_values(["route", "station_seq", "arrived_at"]).reset_index(drop=True)
 
-    # 같은 노선·정류장·운행일의 바로 앞 버스
-    events = events.sort_values(["route", "station_seq", "arrived_at"]).reset_index(drop=True)
-    previous = events.groupby(["route", "station_seq", "service_date"])
-    events["elapsed"] = (events["arrived_at"] - previous["arrived_at"].shift(1)).dt.total_seconds() / 60
-    events["prev_left_full"] = previous["left_full"].shift(1).fillna(False).astype(bool)
-    events["prev_seats"] = previous["seats_low"].shift(1)
-    events["prev_elapsed"] = previous["elapsed"].shift(1).fillna(FIRST_BUS_ELAPSED_MINUTES).clip(0.5, MAX_ELAPSED_MINUTES)
-    events["prev_rate"] = previous["rate"].shift(1)
-    events["prev_hour"] = previous["hour"].shift(1)
 
-    usable = (exact & events["departure_seats"].notna() & events["zone"].isin(ZONES)
-              & events["elapsed"].between(0.5, MAX_ELAPSED_MINUTES)
-              & (events["alightings"] <= ONE_WAY_RATIO * events["boardings"]) & (events["boarded"] >= 0))
-    return events[usable].reset_index(drop=True)
+def bunch_ids(arrived_at: pd.Series, keys: list[pd.Series]) -> pd.Series:
+    """같은 노선·정류장·운행일에서 앞차와 BUNCH_MINUTES 이하로 붙어 온 버스는 같은 묶음 번호."""
+    gap = arrived_at.groupby(keys).diff().dt.total_seconds() / 60
+    return (gap.isna() | (gap > BUNCH_MINUTES)).cumsum()
+
+
+def boarding_events() -> pd.DataFrame:
+    """버스 묶음 × 정류장마다 탑승 인원, 앞 묶음 이후 경과 시간, 앞 묶음의 상태(모두 만석 출발, 좌석 합, 그 앞 간격)."""
+    buses = bus_events()
+    buses["bunch"] = bunch_ids(buses["arrived_at"], [buses["route"], buses["station_seq"], buses["service_date"]])
+    buses["complete"] = buses["exact"] & buses["departure_seats"].notna()
+    first = ["route", "station_seq", "station_id", "station_name", "zone", "service_date", "key_segment", "hour",
+             "day_type", "rate", "boardings", "alightings"]
+    groups = buses.groupby("bunch").agg(
+        **{c: (c, "first") for c in first},
+        arrived_at=("arrived_at", "min"), last_arrived_at=("arrived_at", "max"), buses=("trip_id", "size"),
+        trip_ids=("trip_id", list), seats=("seats_low", "sum"), boarded=("boarded", "sum"),
+        left_full=("left_full", "all"), complete=("complete", "all"),
+    ).reset_index()
+
+    previous = groups.groupby(["route", "station_seq", "service_date"])
+    groups["elapsed"] = (groups["arrived_at"] - previous["last_arrived_at"].shift(1)).dt.total_seconds() / 60
+    groups["prev_left_full"] = previous["left_full"].shift(1).fillna(False).astype(bool)
+    groups["prev_seats"] = previous["seats"].shift(1)
+    groups["prev_elapsed"] = previous["elapsed"].shift(1).fillna(FIRST_BUS_ELAPSED_MINUTES).clip(0.5, MAX_ELAPSED_MINUTES)
+    groups["prev_rate"] = previous["rate"].shift(1)
+    groups["prev_hour"] = previous["hour"].shift(1)
+
+    usable = (groups["complete"] & groups["zone"].isin(ZONES) & groups["elapsed"].between(0.5, MAX_ELAPSED_MINUTES)
+              & (groups["alightings"] <= ONE_WAY_RATIO * groups["boardings"]) & (groups["boarded"] >= 0))
+    return groups[usable].reset_index(drop=True)
 
 
 # ---------- 새로 온 사람 ----------
@@ -277,25 +303,39 @@ def calibration_table(predicted: np.ndarray, actual: np.ndarray) -> tuple[float,
     return float(((predicted - actual) ** 2).mean()), table
 
 
-def near_predictions(evaluation: pd.DataFrame) -> pd.DataFrame:
-    """평가 도착마다 LightGBM이 1–3정거장 앞에서 낸 가장 가까운 예측."""
+def group_seat_distributions(groups: pd.DataFrame, shapes) -> tuple[pd.DataFrame, np.ndarray]:
+    """묶음마다 LightGBM이 1–3정거장 앞에서 낸 가장 가까운 예측으로 좌석 분포를 만든다.
+
+    묶음의 좌석 = 버스별 좌석의 합이므로 분포는 버스별 분포의 합성곱이다. 예측이 없는 버스가 있으면 묶음을 뺀다.
+    """
     predictions = pd.read_parquet(PREDICTIONS_DIR / "lgbm.parquet")
     samples = pd.read_parquet(INTERIM_DIR / "samples.parquet", columns=["route", "veh_id", "observed_at", "target_seq", "trip_id"])
     predictions = predictions.merge(samples, on=["route", "veh_id", "observed_at", "target_seq"])
     near = predictions[predictions["stops_ahead"].between(1, 3)].sort_values("stops_ahead")
-    near = near.drop_duplicates(["trip_id", "target_seq"])
+    near = near.drop_duplicates(["trip_id", "target_seq"]).set_index(["trip_id", "target_seq"])
     columns = [f"p{s}" for s in range(len(STAGE_MIN_SEATS))]
-    return evaluation.merge(near[["trip_id", "target_seq", *columns]],
-                            left_on=["trip_id", "station_seq"], right_on=["trip_id", "target_seq"])
+    kept, distributions = [], []
+    for i, row in enumerate(groups.itertuples(index=False)):
+        keys = [(trip, row.station_seq) for trip in row.trip_ids]
+        if not all(key in near.index for key in keys):
+            continue
+        per_bus = seat_distribution(near.loc[keys, columns].to_numpy(), shapes)
+        combined = per_bus[0]
+        for other in per_bus[1:]:
+            combined = np.convolve(combined, other)
+        kept.append(i)
+        distributions.append(combined)
+    width = max(len(d) for d in distributions)
+    matrix = np.vstack([np.pad(d, (0, width - len(d))) for d in distributions])
+    return groups.iloc[kept].reset_index(drop=True), matrix
 
 
-def report(name: str, evaluation: pd.DataFrame, joined: pd.DataFrame, mean_fn, k: float, shapes) -> dict:
+def report(name: str, evaluation: pd.DataFrame, joined: pd.DataFrame, seat_probs: np.ndarray, mean_fn, k: float) -> dict:
     y, censored = evaluation["boarded"].to_numpy(), evaluation["left_full"].to_numpy()
     mu = mean_fn(evaluation)
     p = k / (k + mu)
     prev_full = evaluation["prev_left_full"].to_numpy()
     lo, hi = stats.nbinom.ppf(0.1, k, p), stats.nbinom.ppf(0.9, k, p)
-    seat_probs = seat_distribution(joined[[f"p{s}" for s in range(len(STAGE_MIN_SEATS))]].to_numpy(), shapes)
     p_full = 1 - seat_probability(seat_probs, mean_fn(joined), k)
     brier, table = calibration_table(p_full, joined["left_full"].to_numpy())
     joined_prev = joined["prev_left_full"].to_numpy()
@@ -306,6 +346,9 @@ def report(name: str, evaluation: pd.DataFrame, joined: pd.DataFrame, mean_fn, k
     print(f"  앞차 만석 {prev_full.sum():,}개: 로그우도 {nb_loglik(mu, k, y, censored)[prev_full].mean():.3f}, "
           f"예측 평균 {mu[prev_full].mean():.1f}명 / 관측 평균 {y[prev_full].mean():.1f}명 (이 중 만석 출발 {censored[prev_full].mean():.0%}, 실제는 더 많음), "
           f"예측 최대 {mu[prev_full].max():.0f}명")
+    bunched = evaluation["buses"].to_numpy() > 1
+    print(f"  몰림 묶음 {bunched.sum()}개: 로그우도 {nb_loglik(mu, k, y, censored)[bunched].mean():.3f}, "
+          f"예측 평균 {mu[bunched].mean():.1f}명 / 관측 평균 {y[bunched].mean():.1f}명")
     print(f"  끝까지 만석 출발 확률 Brier {brier:.3f}\n{table.T.to_string()}")
     print(f"  └ 앞차 만석인 경우만 ({joined_prev.sum()}개) Brier {brier_prev:.3f}\n{table_prev.T.to_string()}")
     return {"name": name, "brier": brier, "brier_prev": brier_prev}
@@ -337,27 +380,29 @@ def main():
     args = parser.parse_args()
 
     events = boarding_events()
-    events.to_parquet(INTERIM_DIR / "boardings.parquet", index=False)
+    events.drop(columns="trip_ids").to_parquet(INTERIM_DIR / "boardings.parquet", index=False)
     open_days = events["service_date"] < SPLITS["test"][0]
     train = events[open_days & (events["service_date"] <= args.train_end)]
     evaluation = events[open_days & (events["service_date"] > args.train_end)]
-    print(f"탑승 인원 표본: 학습 {len(train):,}개 (앞차 만석 {train['prev_left_full'].sum():,}), "
-          f"평가 {len(evaluation):,}개 (앞차 만석 {evaluation['prev_left_full'].sum():,})")
+    print(f"탑승 인원 표본 (버스 묶음): 학습 {len(train):,}개 (앞 묶음 만석 {train['prev_left_full'].sum():,}, "
+          f"2대 이상 {(train['buses'] > 1).sum()}), 평가 {len(evaluation):,}개 (앞 묶음 만석 {evaluation['prev_left_full'].sum():,}, "
+          f"2대 이상 {(evaluation['buses'] > 1).sum()})")
 
     model, ratios = fit(train)
     train, evaluation = with_cells(train, ratios), with_cells(evaluation, ratios)
     print("계수", {n: round(float(v), 3) for n, v in zip(THETA_NAMES, model.theta)},
           f"β {model.beta:.2f} (남은 사람 중 다음 차를 기다리는 비율), k {model.k:.2f}, 새로 온 사람 k {model.k_arrival:.2f}")
 
-    capacity = int(events["seats_low"].max())
-    shapes = within_stage_shapes(train, capacity)
-    joined = near_predictions(evaluation)
+    buses = bus_events()
+    train_buses = buses[buses["zone"].isin(ZONES) & (buses["service_date"] <= args.train_end) & buses["exact"]]
+    shapes = within_stage_shapes(train_buses, int(buses["seats_low"].max()))
+    joined, seat_probs = group_seat_distributions(evaluation, shapes)
     legacy_mean, legacy_k, legacy_params = legacy_fit(train, evaluation)
     print(f"이전 방식 계수: 앞차 만석이면 ×{np.exp(legacy_params[3]):.2f}")
     naive_k = fit_k(train, naive_means(train, train))
-    report("남은 사람 더하기 (새 방식)", evaluation, joined, lambda f: expected_ahead(model, f), model.k, shapes)
-    report("앞차 만석이면 곱하기 (이전 방식)", evaluation, joined, legacy_mean, legacy_k, shapes)
-    report("과거 평균 (노선·정류장·시간)", evaluation, joined, lambda f: naive_means(f, train), naive_k, shapes)
+    report("남은 사람 더하기 (새 방식)", evaluation, joined, seat_probs, lambda f: expected_ahead(model, f), model.k)
+    report("앞차 만석이면 곱하기 (이전 방식)", evaluation, joined, seat_probs, legacy_mean, legacy_k)
+    report("과거 평균 (노선·정류장·시간)", evaluation, joined, seat_probs, lambda f: naive_means(f, train), naive_k)
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     ratios.reset_index().to_parquet(MODELS_DIR / "waiting_cells.parquet", index=False)

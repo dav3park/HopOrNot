@@ -21,7 +21,7 @@ from .features import (CATEGORICAL_FEATURES, NUMERIC_FEATURES, add_features, can
                        observed_rows, with_fleet)
 from .split import service_date
 from .waiting import (FIRST_BUS_ELAPSED_MINUTES, MAX_ELAPSED_MINUTES, MIN_RATE_PER_MINUTE, ZONES, WaitingModel,
-                      day_type_of, expected_ahead, seat_distribution, seat_probability)
+                      bunch_ids, day_type_of, expected_ahead, seat_distribution, seat_probability)
 
 STALE_MINUTES = 15  # 마지막 수집이 이보다 오래되면 실시간 값이 아니다 (01–06시 수집 중지)
 SIMPLE_FROM_STOPS_AHEAD = 4  # 이만큼 앞부터는 중간 단계 예측이 약하므로 P(≥1), P(≥20)만 보여준다
@@ -78,18 +78,28 @@ def snapshot(observations: pd.DataFrame, art: Artifacts) -> Snapshot:
 
 
 def previous_bus(snap: Snapshot, route: str, seq: int) -> dict | None:
-    """이 정류장을 가장 최근에 지난 버스: 도착 시각, 도착 잔여석, 그 앞차와의 간격, 만석 출발 여부 (확인된 것만)."""
+    """이 정류장을 가장 최근에 지난 버스 묶음 (같은 노선, BUNCH_MINUTES 안에 연달아 온 차들, 학습과 같은 규칙).
+
+    마지막 도착 시각, 도착 잔여석 합, 그 앞 묶음과의 간격, 모두 만석으로 떠났는지 (확인된 것만).
+    """
     passed = snap.events[(snap.events["route"] == route) & (snap.events["station_seq"] == seq)].sort_values("arrived_at")
     if passed.empty:
         return None
-    last = passed.iloc[-1]
-    gap = ((last["arrived_at"] - passed.iloc[-2]["arrived_at"]).total_seconds() / 60 if len(passed) > 1
+    constant = pd.Series(0, index=passed.index)
+    passed = passed.assign(bunch=bunch_ids(passed["arrived_at"], [constant]))
+    group = passed[passed["bunch"] == passed["bunch"].iloc[-1]]
+    before = passed[passed["bunch"] < group["bunch"].iloc[0]]
+    gap = ((group["arrived_at"].iloc[0] - before["arrived_at"].iloc[-1]).total_seconds() / 60 if len(before)
            else FIRST_BUS_ELAPSED_MINUTES)
-    trip = snap.trips[(snap.trips["trip_id"] == last["trip_id"]) & (snap.trips["station_seq"] > seq)]
-    departure = int(trip.sort_values("collected_at")["remain_seat_cnt"].iloc[0]) if len(trip) else None
-    return {"arrived_at": last["arrived_at"], "arrival_seats": float(last["seats_low"]),
-            "elapsed": float(np.clip(gap, 0.5, MAX_ELAPSED_MINUTES)), "departure_seats": departure,
-            "left_full": departure == 0}
+    departures = []
+    for trip_id in group["trip_id"]:
+        after = snap.trips[(snap.trips["trip_id"] == trip_id) & (snap.trips["station_seq"] > seq)]
+        departures.append(int(after.sort_values("collected_at")["remain_seat_cnt"].iloc[0]) if len(after) else None)
+    known = all(d is not None for d in departures)
+    return {"arrived_at": group["arrived_at"].iloc[-1], "buses": len(group),
+            "arrival_seats": float(group["seats_low"].sum()), "elapsed": float(np.clip(gap, 0.5, MAX_ELAPSED_MINUTES)),
+            "departure_seats": departures, "departures_known": known,
+            "left_full": known and all(d == 0 for d in departures)}
 
 
 def my_seat_probability(snap: Snapshot, art: Artifacts, route: str, seq: int, user_arrived_at: pd.Timestamp,
@@ -109,7 +119,7 @@ def my_seat_probability(snap: Snapshot, art: Artifacts, route: str, seq: int, us
         elapsed = float(np.clip(elapsed, 0.5, MAX_ELAPSED_MINUTES))
         prev_full = bool(previous["left_full"])
         prev_seats, prev_elapsed = previous["arrival_seats"], previous["elapsed"]
-        if previous["departure_seats"] is None:
+        if not previous["departures_known"]:
             note = "앞차가 아직 정류장을 떠난 것이 확인되지 않아 만석 출발 여부를 모름 (아니라고 가정)"
 
     def rate_and_cell(at: pd.Timestamp) -> tuple[float, float]:
@@ -133,8 +143,9 @@ def my_seat_probability(snap: Snapshot, art: Artifacts, route: str, seq: int, us
         "expected_people_ahead": round(float(mu[0]), 1),
         "minutes_since_previous_bus": round(elapsed, 1),
         "previous_bus": None if previous is None else {
-            "arrived_at": previous["arrived_at"].isoformat(), "arrival_seats": previous["arrival_seats"],
-            "left_full": prev_full, "departure_seats": previous["departure_seats"]},
+            "arrived_at": previous["arrived_at"].isoformat(), "buses": previous["buses"],
+            "arrival_seats": previous["arrival_seats"], "left_full": prev_full,
+            "departure_seats": previous["departure_seats"]},
         "note": note,
     }
 
