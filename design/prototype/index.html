@@ -42,7 +42,7 @@ var h = preact.h, Fragment = preact.Fragment, Component = preact.Component;
 var html = htm.bind(h);
 
 var SP = 110, C = 195, HALF = 195 / 110;
-var FB = 780, FT = 396, SX0 = 146, SXW = 228;
+var FB = 780, FT = 356, SX0 = 146, SXW = 228;
 var BOUNCE = 'cubic-bezier(.34,1.56,.64,1)';
 var TX = 195, TY = 403.5, PS = 1.98;
 var MIN_PER_STOP = 2, WALK_PER_STOP = 4, TH = 0.7;
@@ -198,7 +198,7 @@ class App extends Component {
       return {
         id: b.id, label: rec ? '추천' : ordinal(r), eta: etaOf(b), pct: pct(p),
         pctStyle: 'font-size: 12px; font-weight: 800; color: ' + textOf(p) + ';',
-        headStyle: 'position: absolute; top: 332px; left: ' + (x - colW / 2) + 'px; width: ' + colW + 'px; height: 54px; box-sizing: border-box; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: left .45s ease, width .45s ease; ' + (rec ? 'border: 1.5px solid #1F5FBF; background: #EAF1FB;' : 'border: 1.5px solid transparent;'),
+        headStyle: 'position: absolute; top: 292px; left: ' + (x - colW / 2) + 'px; width: ' + colW + 'px; height: 54px; box-sizing: border-box; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: left .45s ease, width .45s ease; ' + (rec ? 'border: 1.5px solid #1F5FBF; background: #EAF1FB;' : 'border: 1.5px solid transparent;'),
         highStyle: 'position: absolute; top: ' + (FT - 8) + 'px; height: ' + Math.max(0, fy(my) - FT + 8) + 'px; left: ' + (x - 0.5) + 'px; width: 1px; background: #E5E5EA; transition: left .45s ease;',
         lowStyle: 'position: absolute; top: ' + fy(my) + 'px; height: ' + (FB + 12 - fy(my)) + 'px; left: ' + (x - 1) + 'px; width: 2px; background: #AEAEB2; transition: left .45s ease;'
       };
@@ -386,10 +386,7 @@ class App extends Component {
       <span style=${'font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: ' + v.soft + '; color: ' + v.accent}>${v.kind}</span>
       <span style="font-size: 14px; color: #3A3A3C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${v.toName} 방면</span>
     </div>
-    <div style="position: absolute; left: 16px; right: 16px; top: 150px; height: 36px; box-sizing: border-box; padding: 3px; border-radius: 10px; background: #E3E3E8; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px">
-      ${v.tabs.map(function (t) { return html`<button key=${t.no} onClick=${t.pick} style=${t.style}>${t.no}</button>`; })}
-    </div>
-    <div style="position: absolute; left: 16px; right: 16px; top: 194px; height: 124px; box-sizing: border-box; padding: 12px 14px; border-radius: 18px; background: #FFFFFF; display: flex; flex-direction: column; gap: 8px">
+    <div style="position: absolute; left: 16px; right: 16px; top: 152px; height: 124px; box-sizing: border-box; padding: 12px 14px; border-radius: 18px; background: #FFFFFF; display: flex; flex-direction: column; gap: 8px">
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
         <span style="font-size: 12px; font-weight: 600; color: #6C6C70; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">내 정류장 · ${v.myName} · ${v.comingText}</span>
         <span style="font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: #EAF1FB; color: #1F5FBF; white-space: nowrap">AI 판단</span>
@@ -410,7 +407,7 @@ class App extends Component {
         <span style="font-size: 13px; color: #1C1C1E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${v.moveText}</span>
       </div>
     </div>
-    <div style="position: absolute; left: 0; right: 0; top: 326px; bottom: 0; background: #FFFFFF; border-top: 0.5px solid #D1D1D6"></div>
+    <div style="position: absolute; left: 0; right: 0; top: 286px; bottom: 0; background: #FFFFFF; border-top: 0.5px solid #D1D1D6"></div>
     ${v.frets.map(function (f, i) {
       return html`<${Fragment} key=${'f' + i}>
         <div style=${f.lineStyle}></div>
