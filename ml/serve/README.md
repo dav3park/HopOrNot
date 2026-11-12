@@ -25,12 +25,13 @@
      "p_at_least": {"1": 0.999, "20": 0.875}, "detail": "simple"}
   ],
   "my_seat": {"probability": 0.297, "expected_people_ahead": 17.0, "minutes_since_previous_bus": 17.5,
-              "previous_bus": {"arrived_at": "...", "left_full": false, "departure_seats": 11}, "note": null}
+              "previous_bus": {"arrived_at": "...", "arrival_seats": 13.0, "left_full": false, "departure_seats": 11}, "note": null}
 }
 ```
 
 - `p_at_least["k"]` = k석 이상 남아 도착할 확률. 4정거장 이상 앞(`detail: simple`)은 중간 단계 예측이 약해서 1석·20석만 준다.
 - `my_seat`는 다음 버스 한 대 기준이고, 승차 구간(출발권·서울권)에서만 나온다.
+  `expected_people_ahead` = 앞차 이후 새로 온 사람 + 앞차가 만석으로 떠났으면 남은 사람 (`src/waiting.py`).
 - `stale: true`면 마지막 수집이 15분 넘게 지났다 (01–06시 수집 중지).
 - 확률 보정은 아직 적용하지 않았다 (`ml/DECISIONS.md` 확률 보정 1차 시험).
 
