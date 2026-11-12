@@ -1,0 +1,14 @@
+# 추론 이미지에는 serve/Dockerfile 이 COPY 하는 파일만 필요하다
+.env
+data/raw/
+data/predictions/
+data/hold/
+data/compare4/
+data/ensemble_select/
+data/interim/samples.parquet
+data/interim/arrival_events.parquet
+data/interim/boardings.parquet
+notebooks/
+models/*.pkl
+models/*.csv
+**/__pycache__/

@@ -1,7 +1,8 @@
 """대기 인원 모델과 "내가 앉을 확률" (DECISIONS.md 실제 탑승 확률 B안).
 
 입력: data/interim/{arrival_events,boarding_profile,samples}.parquet, data/predictions/lgbm.parquet
-출력: data/interim/boardings.parquet (버스 1대당 탑승 인원), models/waiting.json (모델 계수)
+출력: data/interim/boardings.parquet (버스 1대당 탑승 인원), models/waiting.json (모델 계수),
+      models/waiting_cells.parquet (정류장·시간대별 칸 보정, 실시간 추론용)
 
     P(내가 앉음) = Σ_s P(도착 잔여석 = s) × P(내 앞 인원 < s)
 
@@ -35,6 +36,11 @@ CELL = ["route", "station_id", "hour"]
 CELL_SMOOTHING = 20  # 칸 보정에서 1단계 예측을 몇 명분으로 칠지
 
 
+def day_type_of(local: pd.Series) -> np.ndarray:
+    """대기 모델의 요일유형. 학습과 실시간 추론이 같은 규칙을 쓴다."""
+    return np.where(local.dt.day_of_week < 5, "평일", np.where(local.dt.day_of_week == 5, "토요일", "일요일·공휴일"))
+
+
 def boarding_events() -> pd.DataFrame:
     """버스 1대 × 정류장마다 탑승 인원, 앞차 이후 경과 시간, 앞차 만석 출발 여부."""
     events = pd.read_parquet(INTERIM_DIR / "arrival_events.parquet").sort_values(["trip_id", "station_seq"])
@@ -52,7 +58,7 @@ def boarding_events() -> pd.DataFrame:
 
     local = events["arrived_at"].dt.tz_convert("Asia/Seoul")
     events["hour"] = local.dt.hour
-    events["day_type"] = np.where(local.dt.day_of_week < 5, "평일", np.where(local.dt.day_of_week == 5, "토요일", "일요일·공휴일"))
+    events["day_type"] = day_type_of(local)
     profile = pd.read_parquet(INTERIM_DIR / "boarding_profile.parquet")
     events = events.merge(profile[["route", "station_id", "day_type", "hour", "boardings", "alightings"]],
                           how="left", on=["route", "station_id", "day_type", "hour"])
@@ -176,6 +182,7 @@ def main():
         end_to_end(evaluation, mean_fn, kk, shapes)
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    train[CELL + ["cell_ratio"]].drop_duplicates(CELL).to_parquet(MODELS_DIR / "waiting_cells.parquet", index=False)
     (MODELS_DIR / "waiting.json").write_text(json.dumps({
         "params": dict(zip(names, map(float, params))), "zones": ZONES, "train_end": str(args.train_end),
         "within_stage": {int(s): v.tolist() for s, v in shapes.items()}}, ensure_ascii=False, indent=1))

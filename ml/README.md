@@ -232,7 +232,7 @@ RPS = 1/(K−1) × Σ_{k=1}^{K−1} (F_k − O_k)²
 | 여유 시간대 | 시간대 예측 모델로 하루 확률 곡선 |
 | 과거 기록 | 모델과 별개로 DB의 실제 도착 잔여석을 그대로 보여줌 |
 
-서빙: 학습한 모델을 파일로 저장 → FastAPI 추론 서버에서 로드 → Spring Boot API가 호출 → 앱.
+서빙: 학습한 모델을 파일로 저장 → FastAPI 추론 서버(`serve/`)에서 로드 → Spring Boot API가 호출 → 앱. 추론 서버는 수집 DB를 읽기만 하고, 학습과 같은 특징 함수로 실시간 예측을 만든다 (`serve/README.md`).
 
 ## 11. 코드 구조
 
@@ -257,8 +257,17 @@ ml/
 │   ├── train_baseline.py
 │   ├── train_sklearn.py    # 로지스틱 회귀, 랜덤 포레스트
 │   ├── train_lgbm.py
+│   ├── train_delta.py      # 좌석 변화량 회귀
+│   ├── train_mlp.py        # MLP (GRU 전 단계)
 │   ├── train_gru.py
+│   ├── ensemble.py         # LightGBM + 변화량 회귀 혼합 (시험, 채택 안 함)
+│   ├── calibrate.py        # 온도 조정, isotonic 확률 보정
+│   ├── waiting.py          # 대기 인원 모델, 내가 앉을 확률
+│   ├── live.py             # 실시간 추론 (학습과 같은 특징 함수) + 특징 일치 점검
 │   └── evaluate.py         # 지표, 혼동행렬, 보정 곡선, 나눠서 보기
+├── serve/                  # FastAPI 추론 서버, Dockerfile, 배포 안내
+├── fieldtest/              # 현장 검증 절차, 기록 양식, capture.sh
+├── run_pipeline.sh         # DB 추출부터 대기 인원 모델까지 한 번에
 ├── notebooks/              # 탐색, 그래프
 └── models/                 # 학습된 모델 파일 (.gitignore, 릴리스에만 첨부)
 ```
@@ -282,6 +291,12 @@ python -m src.train_baseline --train-end 2026-11-19
 python -m src.train_sklearn --train-end 2026-11-19
 python -m src.train_lgbm --train-end 2026-11-19
 python -m src.evaluate                    # 테스트 기간은 --final 을 줘야 열림
+```
+
+위 단계와 나머지 모델, 대기 인원 모델까지 한 번에 (약 2–3분):
+
+```bash
+./run_pipeline.sh --end 2026-11-23 --train-end 2026-11-19
 ```
 
 - macOS에서 pip로 받은 torch와 LightGBM을 한 프로세스에서 쓰면 segfault가 나거나 멈춘다. 이 환경에서 둘을 pip로 다시 설치하지 않는다.
