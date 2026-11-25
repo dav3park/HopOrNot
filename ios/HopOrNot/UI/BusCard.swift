@@ -56,7 +56,7 @@ struct BusCard: View {
                     Text("\(expected)석")
                         .font(.system(size: 17, weight: .heavy))
                         .monospacedDigit()
-                        .foregroundStyle(expected == 0 ? Color(hex: 0xB4570A) : .primary)
+                        .foregroundStyle(Theme.seatText(expected))
                     if let range = bus.seatsRange, range.count == 2, range[0] != range[1] {
                         Text("(\(range[0])~\(range[1])석)").font(.system(size: 12)).foregroundStyle(.secondary)
                     }

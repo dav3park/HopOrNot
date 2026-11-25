@@ -23,6 +23,29 @@ enum Theme {
         p >= 0.7 ? Color(hex: 0xEAF1FB) : p >= 0.4 ? Color(hex: 0xEEF2F8) : Color(hex: 0xFDF1E4)
     }
 
+    /// 고속도로 구간 (정류장 목록·노선도·지도)
+    static let highway = Color(hex: 0x9A9AA0)
+    static let highwayText = Color(hex: 0x6E6E73)
+
+    /// 잔여석 색: 0석 빨강, 1–9석 주황, 10–19석 연한 파랑, 20석 이상 파랑
+    static func seats(_ seats: Double) -> Color {
+        switch seats {
+        case ..<0.5: Color(hex: 0xD93025)
+        case ..<10: Color(hex: 0xF0A04B)
+        case ..<20: Color(hex: 0x7FA6DD)
+        default: Color(hex: 0x1F5FBF)
+        }
+    }
+
+    /// 잔여석 글자색 (0석 빨강, 1–9석 진한 주황, 그 밖은 기본)
+    static func seatText(_ seats: Int) -> Color {
+        switch seats {
+        case ..<1: Color(hex: 0xD93025)
+        case ..<10: Color(hex: 0xB4570A)
+        default: .primary
+        }
+    }
+
     static let accent = Color(hex: 0x1F5FBF)
     static let live = Color(hex: 0x34C759)
     static let hairline = Color(.separator)
