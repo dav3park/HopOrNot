@@ -1,0 +1,202 @@
+import Foundation
+import Observation
+import SwiftUI
+
+/// 화면 이동: 노선 선택 → 정류장 목록(노선) → 정류장
+enum Screen: Hashable {
+    case route(Route)
+    case station
+}
+
+@MainActor
+@Observable
+final class AppModel {
+    enum Mode: String, CaseIterable, Identifiable {
+        case demo, live
+        var id: String { rawValue }
+        var label: String { self == .demo ? "데모 (과거 실제 데이터)" : "추론 서버" }
+    }
+
+    // 설정 (UserDefaults에 남긴다)
+    var mode: Mode { didSet { defaults.set(mode.rawValue, forKey: "mode"); clearStopData(); routeView = nil } }
+    var serverURL: String { didSet { defaults.set(serverURL, forKey: "serverURL") } }
+
+    var path: [Screen] = []
+    private(set) var route: Route?
+    private(set) var direction: String = "영통행"
+    private(set) var stop: StopInfo?
+
+    // 정류장 목록 데이터
+    private(set) var routeView: RouteView?
+    private(set) var replayLabel: String?
+    // 정류장 화면 데이터
+    private(set) var prediction: Prediction?
+    private(set) var line: LineView?
+    private(set) var recommendation: Recommendation?
+    private(set) var history: History?
+    private(set) var isLoading = false
+    private(set) var errorMessage: String?
+
+    private let defaults = UserDefaults.standard
+    private var replayIndex = 0
+
+    init() {
+        mode = Mode(rawValue: defaults.string(forKey: "mode") ?? "") ?? .demo
+        serverURL = defaults.string(forKey: "serverURL") ?? "http://localhost:8000"
+        if let raw = defaults.string(forKey: "route"), let route = Route(rawValue: raw) {
+            self.route = route
+            direction = defaults.string(forKey: "direction") ?? Self.defaultDirection
+            path = [.route(route)]
+            if let data = defaults.data(forKey: "stop"), let stop = try? JSONDecoder().decode(StopInfo.self, from: data) {
+                self.stop = stop
+                path.append(.station)
+            }
+        }
+        #if DEBUG
+        // 개발용: -selectStop M5107,영통행,36,광교 (정류장 화면으로 시작), -openRoute M5107,영통행 (정류장 목록으로 시작)
+        let arguments = ProcessInfo.processInfo.arguments
+        func value(_ flag: String) -> [String]? {
+            guard let i = arguments.firstIndex(of: flag), i + 1 < arguments.count else { return nil }
+            return arguments[i + 1].split(separator: ",").map(String.init)
+        }
+        if let parts = value("-selectStop"), parts.count == 4, let route = Route(rawValue: parts[0]), let seq = Int(parts[2]) {
+            self.route = route
+            direction = parts[1]
+            stop = StopInfo(stationSeq: seq, stationName: parts[3], direction: parts[1], zone: nil)
+            path = [.route(route), .station]
+        } else if let parts = value("-openRoute"), parts.count == 2, let route = Route(rawValue: parts[0]) {
+            self.route = route
+            direction = parts[1]
+            stop = nil
+            path = [.route(route)]
+        }
+        #endif
+    }
+
+    /// 오전에는 출근(서울행), 오후에는 퇴근(영통행)
+    static var defaultDirection: String { Calendar.current.component(.hour, from: .now) < 13 ? "서울행" : "영통행" }
+
+    var source: DataSource {
+        switch mode {
+        case .demo: DemoSource()
+        case .live: LiveSource(baseURL: URL(string: serverURL) ?? URL(string: "http://localhost:8000")!)
+        }
+    }
+
+    var dataLabel: String {
+        switch mode {
+        case .demo: "데모 · \(DemoSource.meta?.label ?? "과거 데이터")"
+        case .live: "실시간"
+        }
+    }
+
+    var decision: Decision { Decision(prediction: prediction, recommendation: recommendation, stop: stop) }
+
+    // MARK: 선택
+
+    func open(_ route: Route) {
+        guard self.route != route else { return }
+        self.route = route
+        direction = Self.defaultDirection
+        stop = nil
+        routeView = nil
+        clearStopData()
+        save()
+    }
+
+    func setDirection(_ direction: String) {
+        guard direction != self.direction else { return }
+        self.direction = direction
+        routeView = nil
+        replayIndex = 0
+        save()
+    }
+
+    /// 정류장 목록에서 정류장을 누르면 정류장 화면으로
+    func openStation(_ stop: StopInfo) {
+        if stop.stationSeq != self.stop?.stationSeq {
+            self.stop = StopInfo(stationSeq: stop.stationSeq, stationName: stop.stationName, direction: direction, zone: stop.zone)
+            clearStopData()
+            save()
+        }
+        path.append(.station)
+    }
+
+    /// 정류장 화면 안에서 추천 정류장으로 바꿀 때
+    func switchStop(to seq: Int) async {
+        guard let route else { return }
+        let stops = (try? await source.stops(route: route)) ?? []
+        guard let target = stops.first(where: { $0.stationSeq == seq }) else { return }
+        stop = target
+        clearStopData()
+        save()
+        await refreshStop()
+    }
+
+    private func save() {
+        defaults.set(route?.rawValue, forKey: "route")
+        defaults.set(direction, forKey: "direction")
+        if let stop { defaults.set(try? JSONEncoder().encode(stop), forKey: "stop") } else { defaults.removeObject(forKey: "stop") }
+    }
+
+    private func clearStopData() {
+        prediction = nil
+        line = nil
+        recommendation = nil
+        history = nil
+        errorMessage = nil
+    }
+
+    // MARK: 불러오기
+
+    /// 정류장 목록. 버스 위치가 바뀌면 레일 위에서 움직이도록 애니메이션으로 바꾼다.
+    /// 데모는 저장해 둔 2분 간격 장면을 차례로 보여준다 (재생).
+    func refreshRoute() async {
+        guard let route else { return }
+        let direction = self.direction
+        do {
+            let view: RouteView
+            if mode == .demo, let frames = DemoSource.meta?.replayFrames, !frames.isEmpty {
+                let frame = frames[replayIndex % frames.count]
+                view = try await DemoSource().route(route, direction: direction, frame: frame)
+                replayLabel = "데모 재생 \(frame.prefix(2)):\(frame.suffix(2))"
+                let wrapped = replayIndex % frames.count == 0
+                replayIndex += 1
+                guard self.route == route, self.direction == direction else { return }
+                if wrapped || routeView == nil { routeView = view } else { withAnimation(.easeInOut(duration: 1.4)) { routeView = view } }
+            } else {
+                view = try await source.route(route, direction: direction)
+                replayLabel = nil
+                guard self.route == route, self.direction == direction else { return }
+                if routeView == nil { routeView = view } else { withAnimation(.easeInOut(duration: 1.4)) { routeView = view } }
+            }
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// 정류장 화면: 예측, 노선도·지도, 추천, 지난 7일
+    func refreshStop() async {
+        guard let route, let stop else { return }
+        isLoading = true
+        defer { isLoading = false }
+        let source = self.source
+        do {
+            async let p = source.predict(route: route, stationSeq: stop.stationSeq)
+            async let l = source.line(route: route, stationSeq: stop.stationSeq)
+            async let r = source.recommend(route: route, stationSeq: stop.stationSeq)
+            async let h = source.history(route: route, stationSeq: stop.stationSeq)
+            let (prediction, line, recommendation) = try await (p, l, r)
+            guard self.stop?.stationSeq == stop.stationSeq, self.route == route else { return }
+            self.prediction = prediction
+            self.line = line
+            self.recommendation = recommendation
+            errorMessage = nil
+            // 지난 7일은 서버에서 처음 계산할 때 오래 걸릴 수 있어 따로 받는다
+            if let history = try? await h, self.stop?.stationSeq == stop.stationSeq { self.history = history }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
