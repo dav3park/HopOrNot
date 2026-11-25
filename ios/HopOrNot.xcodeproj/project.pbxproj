@@ -11,7 +11,11 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		AA0000000000000000000002 /* HopOrNot */ = {isa = PBXFileSystemSynchronizedRootGroup; path = HopOrNot; sourceTree = "<group>"; };
+		AA0000000000000000000002 /* HopOrNot */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HopOrNot;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */

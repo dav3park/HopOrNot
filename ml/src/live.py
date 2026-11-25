@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from .build_trips import arrival_events, assign_trips
-from .config import INTERIM_DIR, MODELS_DIR, RAW_DIR, ROUTES, STAGE_MIN_SEATS, TIMEZONE
+from .config import INTERIM_DIR, ML_DIR, MODELS_DIR, RAW_DIR, ROUTES, STAGE_MIN_SEATS, TIMEZONE
 from .evaluate import PROBABILITY_COLUMNS
 from .features import (CATEGORICAL_FEATURES, NUMERIC_FEATURES, add_features, candidate_targets, model_inputs,
                        observed_rows, with_fleet)
@@ -34,6 +34,42 @@ EVENT_COLUMNS = {"route": "str", "trip_id": "int64", "station_seq": "int64", "ar
                  "known_at": f"datetime64[us, {TIMEZONE}]", "seats_low": "float64", "seats_high": "float64"}
 
 
+# 경기버스 공식 지도의 도로 경로 (서울 방향 + 캠퍼스 방향, 운행 순서). frontend 브랜치에서 하성준이 수집
+# (frontend/scripts/sync-gbis-routes.py, 2026-11-12). 정류장 ID·순번이 우리 정류장 표와 모두 같다.
+ROUTE_LINES = ML_DIR / "serve" / "gbis_route_lines.json"
+
+
+@dataclass
+class RoadPath:
+    """노선 한 바퀴의 도로 경로와, 정류장 순번마다 경로 위 가장 가까운 점의 위치."""
+    points: np.ndarray            # (N, 2) 위도, 경도
+    index_of: dict[int, int]      # 정류장 순번 → points 위치 (순번이 커질수록 커진다)
+
+    def between(self, first_seq: int, last_seq: int) -> np.ndarray:
+        lo, hi = self.index_of[first_seq], self.index_of[last_seq]
+        return self.points[min(lo, hi):max(lo, hi) + 1]
+
+
+def road_paths(stops: pd.DataFrame) -> dict[str, RoadPath]:
+    if not ROUTE_LINES.exists():
+        return {}
+    data = json.loads(ROUTE_LINES.read_text())
+    paths = {}
+    for route in data["routes"]:
+        directions = route["directions"]
+        points = np.array([[p["latitude"], p["longitude"]]
+                           for direction in ("TO_SEOUL", "TO_CAMPUS")
+                           for part in directions[direction]["path"] for p in part])
+        index_of, start = {}, 0
+        for row in stops[stops["route"] == route["name"]].sort_values("station_seq").itertuples(index=False):
+            # 앞 정류장보다 뒤에서만 찾는다 (서울 도심 순환에서 같은 길을 두 번 지나도 순서를 지킨다)
+            rest = points[start:]
+            nearest = start + int(np.argmin((rest[:, 0] - row.y) ** 2 + (rest[:, 1] - row.x) ** 2))
+            index_of[int(row.station_seq)] = start = nearest
+        paths[route["name"]] = RoadPath(points, index_of)
+    return paths
+
+
 @dataclass
 class Artifacts:
     stops: pd.DataFrame
@@ -42,6 +78,7 @@ class Artifacts:
     waiting: WaitingModel
     cells: pd.Series
     within_stage: dict[int, np.ndarray]
+    roads: dict[str, RoadPath]
 
 
 @dataclass
@@ -61,6 +98,7 @@ def load_artifacts() -> Artifacts:
         waiting=WaitingModel.from_json(waiting),
         cells=pd.read_parquet(MODELS_DIR / "waiting_cells.parquet").set_index(["route", "station_id", "hour"])["cell_ratio"],
         within_stage={int(s): np.array(v) for s, v in waiting["within_stage"].items()},
+        roads=road_paths(pd.read_parquet(INTERIM_DIR / "stops.parquet")),
     )
 
 
@@ -225,12 +263,17 @@ def line_view(snap: Snapshot, art: Artifacts, route: str, seq: int) -> dict:
     ahead = snap.predictions[(snap.predictions["route"] == route) & snap.predictions["veh_id"].isin(coming["veh_id"])
                              & (snap.predictions["target_seq"] <= seq)]
 
+    road = art.roads.get(route)
+
     def where(row) -> tuple[float, float]:
-        """정류장에 도착(state_cd 1)했으면 그 정류장, 아니면 다음 정류장 쪽으로 반쯤 간 자리."""
+        """정류장에 도착(state_cd 1)했으면 그 정류장, 아니면 다음 정류장까지 도로를 반쯤 간 자리."""
         here = stops.loc[row.current_seq]
         later = stops[stops.index > row.current_seq]
         if row.state_cd == 1 or later.empty:
             return float(here["y"]), float(here["x"])
+        if road is not None:
+            middle = road.between(int(row.current_seq), int(later.index[0]))
+            return tuple(float(v) for v in middle[len(middle) // 2])
         nxt = later.iloc[0]
         return float((here["y"] + nxt["y"]) / 2), float((here["x"] + nxt["x"]) / 2)
 
@@ -245,13 +288,19 @@ def line_view(snap: Snapshot, art: Artifacts, route: str, seq: int) -> dict:
             "lat": lat, "lon": lon,
             "p_seat_at": {str(int(r.target_seq)): round(float(1 - r.p0), 3) for r in mine_rows.itertuples(index=False)},
         })
-    path = stops[stops["direction"] == mine["direction"]]
+    # 도로 경로: 노선도 맨 위 정류장(또는 그보다 먼 버스)부터 노선도 맨 아래 정류장까지. 없으면 정류장 사이 직선.
+    if road is not None and len(window):
+        first = min([int(window.index.min())] + [int(b.current_seq) for b in coming.itertuples(index=False)])
+        path = road.between(first, int(window.index.max())).tolist()
+    else:
+        path = [[float(r["y"]), float(r["x"])] for _, r in stops[stops["direction"] == mine["direction"]].iterrows()]
     return {
         "route": route, "station_seq": seq, "direction": mine["direction"], "generated_at": snap.generated_at.isoformat(),
         "stops": [{"station_seq": int(s), "station_name": r["station_name"], "lat": float(r["y"]), "lon": float(r["x"]),
                    "is_target": bool(r["is_target"]), "is_mine": int(s) == seq} for s, r in window.iterrows()],
         "buses": buses,
-        "path": [[float(r["y"]), float(r["x"])] for _, r in path.iterrows()],
+        "path": path,
+        "path_source": "gbis_road" if road is not None else "stop_to_stop",
     }
 
 

@@ -84,7 +84,9 @@ struct LineView: Codable {
     let generatedAt: Date
     let stops: [LineStop]
     let buses: [LineBus]
+    /// [위도, 경도]. 경기버스 공식 지도의 도로 경로 (pathSource "gbis_road"), 없으면 정류장 사이 직선
     let path: [[Double]]
+    let pathSource: String?
 }
 
 struct LineStop: Codable, Identifiable {

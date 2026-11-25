@@ -2,7 +2,8 @@ import MapKit
 import SwiftUI
 
 /// 지도: 노선 경로 위에 다가오는 버스와 내 정류장. 주변 장소는 숨겨 노선과 버스만 보이게 한다.
-/// 버스 위치는 GPS가 아니라 버스가 지난 정류장 기준이다 (도착해 있으면 그 정류장, 가는 중이면 다음 정류장과의 중간).
+/// 노선은 경기버스 공식 지도의 도로 경로다 (서버가 버스들과 내 정류장 사이 구간만 잘라 준다).
+/// 버스 위치는 GPS가 아니라 버스가 지난 정류장 기준이다 (도착해 있으면 그 정류장, 가는 중이면 다음 정류장까지 도로의 중간).
 struct BusMapView: View {
     let route: Route
     let line: LineView
@@ -13,28 +14,11 @@ struct BusMapView: View {
 
     private var buses: [LineBus] { Array(line.buses.prefix(4)) }
 
-    /// 경로 중 가장 먼 버스 근처부터 내 정류장 다음 정류장까지
-    private var visiblePath: [CLLocationCoordinate2D] {
-        let points = line.path.map { coordinate($0[0], $0[1]) }
-        let targets = line.stops.map { coordinate($0.lat, $0.lon) } + buses.map { coordinate($0.lat, $0.lon) }
-        func nearest(_ c: CLLocationCoordinate2D) -> Int {
-            points.indices.min { distance(points[$0], c) < distance(points[$1], c) } ?? 0
-        }
-        let indices = targets.map(nearest)
-        guard let lo = indices.min(), let hi = indices.max(), lo < hi else { return points }
-        return Array(points[lo...min(hi, points.count - 1)])
-    }
-
-    private func distance(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
-        let dx = a.latitude - b.latitude, dy = a.longitude - b.longitude
-        return dx * dx + dy * dy
-    }
 
     var body: some View {
         Map(position: $position) {
-            // 정류장 사이를 직선으로 잇는다 (도로 모양이 아님). 버스들과 내 정류장 사이 구간만 옅게 그린다.
-            MapPolyline(coordinates: visiblePath)
-                .stroke(Theme.route(route).opacity(0.45), lineWidth: 3)
+            MapPolyline(coordinates: line.path.map { coordinate($0[0], $0[1]) })
+                .stroke(Theme.route(route).opacity(0.7), lineWidth: 5)
 
             // 중간 정류장 점은 버스 핀을 가려서 그리지 않는다. 정류장별 확률은 노선도에서 본다.
             ForEach(line.stops.filter(\.isMine)) { stop in
@@ -85,13 +69,13 @@ struct BusMapView: View {
 
     /// 내 정류장 앞쪽 정류장들과 버스가 모두 보이는 범위
     private var region: MKCoordinateRegion {
-        let points = line.stops.map { ($0.lat, $0.lon) } + buses.map { ($0.lat, $0.lon) }
+        let points = line.path.map { ($0[0], $0[1]) } + buses.map { ($0.lat, $0.lon) }
         let lats = points.map(\.0), lons = points.map(\.1)
         guard let minLat = lats.min(), let maxLat = lats.max(), let minLon = lons.min(), let maxLon = lons.max() else {
             return MKCoordinateRegion(center: coordinate(37.5665, 126.978), span: .init(latitudeDelta: 0.05, longitudeDelta: 0.05))
         }
         return MKCoordinateRegion(
             center: coordinate((minLat + maxLat) / 2, (minLon + maxLon) / 2),
-            span: .init(latitudeDelta: max(0.01, (maxLat - minLat) * 1.8), longitudeDelta: max(0.01, (maxLon - minLon) * 1.8)))
+            span: .init(latitudeDelta: max(0.008, (maxLat - minLat) * 1.35), longitudeDelta: max(0.008, (maxLon - minLon) * 1.35)))
     }
 }
