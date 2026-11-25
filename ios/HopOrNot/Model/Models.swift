@@ -89,6 +89,9 @@ struct Bus: Codable, Identifiable {
     let detail: String
     /// 이 버스까지(앞 버스들 포함) 내가 탈 확률. 가까운 몇 대만 있다.
     let mySeatByHere: Double?
+    /// 내 정류장에 도착할 때 예상 잔여석 (중앙값)과 10–90% 범위
+    let expectedSeats: Int?
+    let seatsRange: [Int]?
 
     var id: Int { vehId }
     var isSimple: Bool { detail == "simple" }
@@ -96,6 +99,11 @@ struct Bus: Codable, Identifiable {
     func atLeast(_ seats: Int) -> Double? { pAtLeast[String(seats)] }
     /// 도착 시간은 모델로 예측하지 않는다. 정거장당 약 2분으로 어림한다 (ml/src/live.py BUS_MINUTES_PER_STOP).
     var etaMinutes: Int { max(1, stopsAhead * 2) }
+    var expectedText: String? {
+        guard let expectedSeats else { return nil }
+        guard let range = seatsRange, range.count == 2, range[0] != range[1] else { return "예상 \(expectedSeats)석" }
+        return "예상 \(expectedSeats)석 (\(range[0])~\(range[1]))"
+    }
 }
 
 struct MySeat: Codable {
@@ -174,6 +182,44 @@ struct Candidate: Codable, Identifiable {
 struct DemoMeta: Codable {
     let generatedAt: Date
     let label: String
+    /// 정류장 목록 재생용 장면 (HHmm)
+    let replayFrames: [String]?
+}
+
+/// 지난 7일 이 정류장 도착 잔여석, 30분 단위 (GET /history)
+struct History: Codable {
+    let route: String
+    let stationSeq: Int
+    let slotMinutes: Int
+    let days: [HistoryDay]
+    let cells: [HistoryCell]
+    let summary: [HistorySlot]
+}
+
+struct HistoryDay: Codable, Hashable {
+    let day: String       // 2026-11-19
+    let dayType: String   // 평일 / 토요일 / 일요일·공휴일
+}
+
+struct HistoryCell: Codable {
+    let day: String
+    let slot: Int         // 하루 시작부터 분 (자정 넘으면 1440 이상)
+    let buses: Int
+    let meanSeats: Double
+    let share: Double
+    let allBoarded: Double?
+}
+
+struct HistorySlot: Codable {
+    let dayType: String
+    let slot: Int
+    let buses: Int
+    let medianSeats: Double
+    /// 도착할 때 1석 이상 남은 비율
+    let share: Double
+    /// 만석으로 떠나지 않은(기다린 사람이 다 탄) 비율. 떠날 때 잔여석을 아는 버스가 3대 미만이면 nil
+    let allBoarded: Double?
+    var boardable: Double { allBoarded ?? share }
 }
 
 enum JSON {

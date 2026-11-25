@@ -7,6 +7,7 @@ GET /stops?route=M5107                        예측 대상 정류장 목록
 GET /predict?route=M5107&station_seq=40       다가오는 버스들의 좌석 확률 + 버스별 "이 버스까지 내가 탈 확률"
     &arrived_at=2026-11-12T18:05:00+09:00     (선택) 내가 정류장에 도착한 시각. 없으면 지금
 GET /route?route=M5107&direction=영통행          정류장 목록: 한 방향의 정류장 전체 + 지금 달리는 버스 위치
+GET /history?route=M5107&station_seq=40       지난 7일 이 정류장 도착 잔여석, 30분 단위 (하루 한 번 계산)
 GET /line?route=M5107&station_seq=40          노선도·지도: 앞쪽 정류장, 버스 위치, 버스별 정류장별 1석 이상 확률, 경로
 GET /recommend?route=M5107&station_seq=40     가까운 승차 정류장을 내가 탈 확률 순으로
 
@@ -22,7 +23,8 @@ from sqlalchemy import text
 
 from src.config import ROUTES, TIMEZONE
 from src.export_db import make_engine, read_observations
-from src.live import line_view, load_artifacts, recommend, route_view, snapshot, stop_prediction
+from src.build_trips import arrival_events, assign_trips
+from src.live import HISTORY_DAYS, history_view, line_view, load_artifacts, recommend, route_view, snapshot, stop_prediction
 from src.split import service_date
 
 app = FastAPI(title="HopOrNot 추론 서버")
@@ -30,6 +32,7 @@ engine = make_engine()
 artifacts = load_artifacts()
 _lock = threading.Lock()
 _cache: dict = {"latest": None, "snapshot": None}
+_history: dict = {"day": None, "events": None}
 RouteName = Literal["1112", "M5107", "5100"]
 assert set(RouteName.__args__) == {route.name for route in ROUTES}
 
@@ -110,3 +113,22 @@ def route_stops(route: RouteName, direction: Literal["서울행", "영통행"]):
         return route_view(current_snapshot(), artifacts, route, direction)
     except KeyError as error:
         raise HTTPException(404, str(error)) from error
+
+
+def history_events():
+    """지난 HISTORY_DAYS 운행일의 도착 이벤트. 운행일이 바뀔 때 한 번 다시 계산한다 (수십 초 걸린다)."""
+    latest = latest_collection()
+    if latest is None:
+        raise HTTPException(503, "수집된 관측이 없다")
+    today = service_date(pd.Series([latest])).iloc[0]
+    with _lock:
+        if _history["day"] != today:
+            observations = read_observations(engine, today - pd.Timedelta(days=HISTORY_DAYS), today - pd.Timedelta(days=1))
+            _history.update(day=today, events=arrival_events(assign_trips(observations), artifacts.stops))
+        return _history["events"], latest
+
+
+@app.get("/history")
+def history(route: RouteName, station_seq: int):
+    events, latest = history_events()
+    return history_view(events, route, station_seq, latest)

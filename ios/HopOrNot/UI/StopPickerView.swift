@@ -20,7 +20,7 @@ struct StopPickerView: View {
 
                 VStack(spacing: 12) {
                     ForEach(Route.allCases) { route in
-                        NavigationLink(value: route) { routeCard(route) }
+                        NavigationLink(value: Screen.route(route)) { routeCard(route) }
                             .buttonStyle(.plain)
                     }
                 }

@@ -49,6 +49,21 @@ struct BusCard: View {
                 }
             }
 
+            if let expected = bus.expectedSeats {
+                HStack(spacing: 6) {
+                    Image(systemName: "chair.fill").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text("도착할 때 예상 잔여석").font(.system(size: 12.5)).foregroundStyle(.secondary)
+                    Text("\(expected)석")
+                        .font(.system(size: 17, weight: .heavy))
+                        .monospacedDigit()
+                        .foregroundStyle(expected == 0 ? Color(hex: 0xB4570A) : .primary)
+                    if let range = bus.seatsRange, range.count == 2, range[0] != range[1] {
+                        Text("(\(range[0])~\(range[1])석)").font(.system(size: 12)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+
             HStack(spacing: 6) {
                 ForEach(seatLevels, id: \.self) { level in
                     if let p = bus.atLeast(level) {

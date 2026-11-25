@@ -202,6 +202,13 @@ def my_seat_probability(snap: Snapshot, art: Artifacts, route: str, seq: int, us
     }
 
 
+def seat_estimate(stage_probabilities: np.ndarray, within: dict[int, np.ndarray]) -> dict:
+    """단계 확률을 좌석 수 분포로 펴서 예상 잔여석(중앙값)과 10–90% 범위."""
+    cdf = np.cumsum(seat_distribution(stage_probabilities[None, :], within)[0])
+    quantile = lambda q: int(np.searchsorted(cdf, q))
+    return {"expected_seats": quantile(0.5), "seats_range": [quantile(0.1), quantile(0.9)]}
+
+
 def arrival_order(coming: pd.DataFrame) -> pd.DataFrame:
     """다가오는 버스를 도착 순서로. 남은 실제 정류장 수가 같으면 순번이 큰(체크포인트를 더 지난) 차가,
     같은 정류장이면 이미 출발한(state_cd 2) 차가 도착한(1)·통과 중인(0) 차보다 앞서 있다."""
@@ -231,6 +238,7 @@ def stop_prediction(snap: Snapshot, art: Artifacts, route: str, seq: int, user_a
             "current_seats": int(row.current_seats), "observed_at": row.observed_at.isoformat(),
             "p_at_least": {k: v for k, v in at_least.items() if not simple or k in ("1", f"{STAGE_MIN_SEATS[-1]}")},
             "detail": "simple" if simple else "full",
+            **seat_estimate(p, art.within_stage),
         })
     stale = (now - snap.generated_at).total_seconds() / 60 > STALE_MINUTES
     result = {
@@ -334,6 +342,56 @@ def route_view(snap: Snapshot, art: Artifacts, route: str, direction: str) -> di
                    "stops_to_first": int(((stops["station_seq"] > r.station_seq) & (stops["station_seq"] <= first)).sum()),
                    "state_cd": int(r.state_cd), "current_seats": int(r.remain_seat_cnt)}
                   for r in on_route.itertuples(index=False)],
+    }
+
+
+HISTORY_DAYS = 7
+HISTORY_SLOT_MINUTES = 30
+
+
+def history_view(events: pd.DataFrame, route: str, seq: int, until: pd.Timestamp) -> dict:
+    """지난 HISTORY_DAYS 운행일 동안 이 정류장에 도착한 버스의 잔여석 (30분 단위).
+
+    events는 arrival_events (build_trips). 도착 잔여석은 라벨과 같은 값(범위면 가운데)이다.
+    줄 선 사람은 빼지 않은 "도착할 때 남은 좌석"이다.
+    """
+    until_day = service_date(pd.Series([until])).iloc[0]
+    first_day = until_day - pd.Timedelta(days=HISTORY_DAYS)
+    on_route = events[(events["route"] == route) & (events["service_date"] >= first_day)
+                      & (events["service_date"] < until_day)].sort_values(["trip_id", "station_seq"])
+    # 떠날 때 잔여석 = 같은 운행의 다음 정류장 도착 잔여석 (둘 다 정확할 때만). 0이면 만석 출발 = 기다린 사람이 다 못 탐
+    exact = on_route["seats_low"] == on_route["seats_high"]
+    nxt = on_route.groupby("trip_id")["seats_low"].shift(-1).where(exact.groupby(on_route["trip_id"]).shift(-1, fill_value=False))
+    on_route = on_route.assign(all_boarded=np.where(nxt.isna(), np.nan, (nxt > 0).astype(float)))
+    here = on_route[(on_route["station_seq"] == seq) & (on_route["arrived_at"] < until)]
+    local = here["arrived_at"].dt.tz_convert(TIMEZONE)
+    minutes = local.dt.hour * 60 + local.dt.minute
+    minutes = minutes + np.where(local.dt.hour < 3, 24 * 60, 0)  # 자정 넘긴 막차는 전날 운행일
+    frame = pd.DataFrame({
+        "day": here["service_date"].astype(str), "slot": (minutes // HISTORY_SLOT_MINUTES) * HISTORY_SLOT_MINUTES,
+        "seats": (here["seats_low"] + here["seats_high"]) / 2, "has_seat": here["seats_low"] >= 1,
+        "all_boarded": here["all_boarded"].to_numpy(),
+    })
+    days = sorted(frame["day"].unique())
+    day_types = {d: day_type_of(pd.Series([pd.Timestamp(d, tz=TIMEZONE)]))[0] for d in days}
+    cells = frame.groupby(["day", "slot"]).agg(buses=("seats", "size"), mean_seats=("seats", "mean"),
+                                                 share=("has_seat", "mean"), all_boarded=("all_boarded", "mean")).reset_index()
+    frame["day_type"] = frame["day"].map(day_types)
+    summary = frame.groupby(["day_type", "slot"]).agg(buses=("seats", "size"), median_seats=("seats", "median"),
+                                                       share=("has_seat", "mean"), all_boarded=("all_boarded", "mean"),
+                                                       known=("all_boarded", "count")).reset_index()
+    rounded = lambda v: None if pd.isna(v) else round(float(v), 3)
+    return {
+        "route": route, "station_seq": seq, "until": until.isoformat(), "slot_minutes": HISTORY_SLOT_MINUTES,
+        "days": [{"day": d, "day_type": day_types[d]} for d in days],
+        "cells": [{"day": r.day, "slot": int(r.slot), "buses": int(r.buses), "mean_seats": round(float(r.mean_seats), 1),
+                   "share": round(float(r.share), 3), "all_boarded": rounded(r.all_boarded)}
+                  for r in cells.itertuples(index=False)],
+        # share: 도착할 때 1석 이상 남은 비율 / all_boarded: 만석으로 떠나지 않은(기다린 사람이 다 탄) 비율
+        "summary": [{"day_type": r.day_type, "slot": int(r.slot), "buses": int(r.buses),
+                     "median_seats": round(float(r.median_seats), 1), "share": round(float(r.share), 3),
+                     "all_boarded": rounded(r.all_boarded) if r.known >= 3 else None}
+                    for r in summary.itertuples(index=False)],
     }
 
 

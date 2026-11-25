@@ -9,7 +9,12 @@ struct HopOrNotApp: App {
             @Bindable var model = model
             NavigationStack(path: $model.path) {
                 StopPickerView()
-                    .navigationDestination(for: Route.self) { RouteScreen(route: $0) }
+                    .navigationDestination(for: Screen.self) { screen in
+                        switch screen {
+                        case .route(let route): RouteScreen(route: route)
+                        case .station: StationView()
+                        }
+                    }
             }
             .environment(model)
         }
