@@ -29,11 +29,12 @@ struct StopInfo: Codable, Identifiable, Hashable {
     var supportsMySeat: Bool { zone == "출발권" || zone == "서울권" }
 }
 
-/// 정류장 목록 화면: 한 방향의 정류장 전체와 지금 달리는 버스 (GET /route)
+/// 정류장 목록 화면: 노선 한 바퀴(캠퍼스 → 서울 → 캠퍼스)를 한 줄로, 지금 달리는 버스 전부 (GET /route)
 struct RouteView: Codable {
     let route: String
-    let direction: String
     let generatedAt: Date
+    /// 회차 지점 순번 (서울 끝)
+    let turnSeq: Int
     let stops: [RouteStop]
     let buses: [RouteBus]
 }
@@ -43,26 +44,48 @@ struct RouteStop: Codable, Identifiable, Hashable {
     let stationName: String
     let lat: Double
     let lon: Double
+    /// stop 승하차 정류장 / highway 고속도로 구간(IC·JC·TG 이름) / via 도심 경유 지점 / campus 경희대 안쪽
+    let kind: String
     let isTarget: Bool
     let zone: String?
+    /// 서울행 / 영통행 (예측 대상 정류장만)
+    let direction: String?
+
     var id: Int { stationSeq }
-    var info: StopInfo { StopInfo(stationSeq: stationSeq, stationName: stationName, direction: nil, zone: zone) }
+    var isHighway: Bool { kind == "highway" }
+    var isVia: Bool { kind == "via" }
+    /// 문이 열리지 않는 지점 (고속도로, 도심 경유)
+    var isPassThrough: Bool { isHighway || isVia }
+    /// "양재IC(경유)" → "양재IC"
+    var displayName: String { stationName.replacingOccurrences(of: "(경유)", with: "") }
+    var info: StopInfo { StopInfo(stationSeq: stationSeq, stationName: stationName, direction: direction, zone: zone) }
 }
 
 struct RouteBus: Codable, Identifiable {
     let vehId: Int
     let plateNo: String
     let currentSeq: Int
-    /// 마지막으로 지난 곳 (고속도로 체크포인트 이름일 수 있다)
-    let currentStationName: String?
     let stateCd: Int
     let currentSeats: Int
+    let lat: Double
+    let lon: Double
     var id: Int { vehId }
     var plateShort: String { String(plateNo.suffix(4)) }
     /// 정류장에 도착해 있음 (state_cd 1). 아니면 그 정류장을 지나 다음 정류장으로 가는 중
     var isAtStop: Bool { stateCd == 1 }
-    /// "양재IC(경유)" → "양재IC"
-    var placeShort: String { (currentStationName ?? "").replacingOccurrences(of: "(경유)", with: "") }
+}
+
+/// 지도용 도로 경로 (GET /path). 고속도로는 따로 나눠서 회색으로 그린다.
+struct RoutePath: Codable {
+    let route: String
+    let source: String
+    let segments: [PathSegment]
+}
+
+struct PathSegment: Codable {
+    let kind: String   // road / highway
+    let points: [[Double]]   // [위도, 경도]
+    var isHighway: Bool { kind == "highway" }
 }
 
 struct Prediction: Codable {
@@ -121,26 +144,13 @@ struct PreviousBus: Codable {
     let leftFull: Bool
 }
 
+/// 내 정류장으로 오는 버스들 (GET /line). 정류장 목록과 도로 경로는 RouteView, RoutePath에 있다.
 struct LineView: Codable {
     let route: String
     let stationSeq: Int
     let direction: String?
     let generatedAt: Date
-    let stops: [LineStop]
     let buses: [LineBus]
-    /// [위도, 경도]. 경기버스 공식 지도의 도로 경로 (pathSource "gbis_road"), 없으면 정류장 사이 직선
-    let path: [[Double]]
-    let pathSource: String?
-}
-
-struct LineStop: Codable, Identifiable {
-    let stationSeq: Int
-    let stationName: String
-    let lat: Double
-    let lon: Double
-    let isTarget: Bool
-    let isMine: Bool
-    var id: Int { stationSeq }
 }
 
 struct LineBus: Codable, Identifiable {

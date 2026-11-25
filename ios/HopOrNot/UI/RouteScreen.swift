@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// 정류장 목록 (네이버 버스처럼): 한 방향의 정류장 목록과, 노선 레일 위를 움직이는 버스.
+/// 정류장 목록 (네이버 버스처럼): 노선 한 바퀴를 한 줄로.
+/// 캠퍼스 → 출발권 정류장 → 고속도로(회색, IC 이름) → 서울 정류장 → 고속도로 → 도착권 정류장 → 캠퍼스.
 /// 정류장 줄은 고정이고 버스는 그 위에 겹쳐 놓는다. 위치가 바뀌면 레일을 따라 움직인다 (데모는 2분 간격 장면 재생).
-/// 정류장을 누르면 정류장 화면(AI 판단, 노선도·지도, 오는 버스, 지난 7일)으로 간다.
+/// 정류장을 누르면 정류장 화면(AI 판단, 노선도/지도, 오는 버스, 탈 확률 높은 정류장, 지난 7일)으로 간다.
 struct RouteScreen: View {
     let route: Route
     @Environment(AppModel.self) private var model
@@ -16,14 +17,13 @@ struct RouteScreen: View {
             }
             .background(Theme.background)
             .refreshable { await model.refreshRoute() }
-            .onChange(of: model.direction) { scrolled = false }
             .onChange(of: model.routeView == nil) {
-                guard !scrolled, let seq = model.stop?.stationSeq, model.routeView != nil else { return }
+                guard !scrolled, let seq = model.scrollTargetSeq else { return }
                 scrolled = true
                 proxy.scrollTo("stop-\(seq)", anchor: .center)
             }
         }
-        .task(id: "\(route.rawValue)-\(model.direction)-\(model.mode.rawValue)") {
+        .task(id: "\(route.rawValue)-\(model.mode.rawValue)") {
             // 데모: 2분 간격 장면을 2.5초마다 (재생). 서버: 30초마다 (수집은 피크 2분 간격)
             while !Task.isCancelled {
                 await model.refreshRoute()
@@ -55,16 +55,16 @@ struct RouteContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                Picker("방향", selection: Binding(get: { model.direction }, set: { model.setDirection($0) })) {
-                    Text("서울행 · 출근").tag("서울행")
-                    Text("영통행 · 퇴근").tag("영통행")
-                }
-                .pickerStyle(.segmented)
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     LiveDot(label: liveLabel)
                     Spacer()
                     Text("정류장을 누르면 탈 확률").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.accent)
+                }
+                HStack(spacing: 14) {
+                    legend(Theme.route(route), "일반 도로")
+                    legend(Theme.highway, "고속도로")
+                    Spacer()
                 }
             }
             .padding(.horizontal, 16)
@@ -93,6 +93,13 @@ struct RouteContent: View {
         }
     }
 
+    private func legend(_ color: Color, _ label: String) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 16, height: 5)
+            Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+
     private var liveLabel: String {
         if let replay = model.replayLabel { return replay }
         guard let generated = model.routeView?.generatedAt else { return model.dataLabel }
@@ -100,113 +107,171 @@ struct RouteContent: View {
     }
 }
 
-/// 노선 레일: 왼쪽에 버스(지금 잔여석·차량번호), 가운데 레일, 오른쪽에 정류장 이름
+/// 노선 레일: 왼쪽에 버스(지금 잔여석·차량번호), 가운데 레일, 오른쪽에 정류장 이름.
+/// 고속도로 구간은 회색 레일과 작은 줄로, 승하차 정류장은 큰 줄로 그린다.
 struct StopRail: View {
     let route: Route
     let view: RouteView
     let highlighted: Int?
     let onSelect: (RouteStop) -> Void
 
-    private let rowHeight: CGFloat = 56
-    private let laneHeight: CGFloat = 46
     private let railX: CGFloat = 92
     private let nameX: CGFloat = 116
 
     private var stops: [RouteStop] { view.stops }
-    /// 이 방향 첫 정류장으로 오는 중 (고속도로, 캠퍼스 안쪽). 먼 버스가 위
-    private var entering: [RouteBus] {
-        view.buses.filter { $0.currentSeq < (stops.first?.stationSeq ?? 0) }.sorted { $0.currentSeq < $1.currentSeq }
+
+    private func height(_ stop: RouteStop) -> CGFloat {
+        switch stop.kind {
+        case "highway", "via": 34
+        case "campus": 46
+        default: 56
+        }
     }
-    private var enteringHeight: CGFloat { entering.isEmpty ? 0 : 30 + laneHeight * CGFloat(entering.count) }
-    private var totalHeight: CGFloat { enteringHeight + rowHeight * CGFloat(stops.count) }
+
+    /// 줄마다 위에서부터의 거리
+    private var offsets: [CGFloat] {
+        var result: [CGFloat] = [], y: CGFloat = 0
+        for stop in stops { result.append(y); y += height(stop) }
+        return result
+    }
+
+    private var totalHeight: CGFloat { stops.reduce(0) { $0 + height($1) } }
+    private func center(_ index: Int, _ offsets: [CGFloat]) -> CGFloat { offsets[index] + height(stops[index]) / 2 }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            // 진입 구간 레일 (옅게)과 정류장 구간 레일
-            if !entering.isEmpty {
-                Rectangle()
-                    .fill(Theme.route(route).opacity(0.35))
-                    .frame(width: 6, height: enteringHeight + rowHeight / 2)
-                    .offset(x: railX - 3)
-                Text(view.direction == "영통행" ? "고속도로 · 서울로 들어오는 중" : "출발 준비 중")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .offset(x: nameX, y: 8)
-            }
-            Rectangle()
-                .fill(Theme.route(route))
-                .frame(width: 6, height: max(0, rowHeight * CGFloat(stops.count - 1)))
-                .offset(x: railX - 3, y: enteringHeight + rowHeight / 2)
-
-            // 정류장 줄
+        let offsets = self.offsets
+        // 줄은 실제 레이아웃(스크롤 위치 계산용), 레일은 뒤에, 버스는 앞에 겹쳐 그린다
+        VStack(spacing: 0) {
             ForEach(Array(stops.enumerated()), id: \.element.id) { index, stop in
-                stopRow(stop)
-                    .frame(height: rowHeight)
-                    .offset(y: enteringHeight + rowHeight * CGFloat(index))
+                stopRow(stop, firstOfHighwayRun: stop.isHighway && (index == 0 || !stops[index - 1].isHighway))
+                    .frame(height: height(stop))
                     .id("stop-\(stop.stationSeq)")
             }
-
-            // 버스 (위치가 바뀌면 레일을 따라 움직인다)
-            ForEach(view.buses) { bus in
-                busMarker(bus)
-                    .offset(y: spreadY(of: bus) - 15)
-                    .transition(.opacity)
-            }
         }
-        .frame(maxWidth: .infinity, minHeight: totalHeight, maxHeight: totalHeight, alignment: .topLeading)
+        .frame(maxWidth: .infinity)
+        .background(alignment: .topLeading) { rail(offsets) }
+        .overlay(alignment: .topLeading) {
+            ZStack(alignment: .topLeading) {
+                ForEach(view.buses) { bus in
+                    busMarker(bus)
+                        .offset(y: spreadY(of: bus, offsets) - 15)
+                }
+            }
+            .allowsHitTesting(false)
+        }
     }
 
-    /// 같은 자리의 버스가 여러 대면 위아래로 벌린다 (먼저 갈 차가 아래)
-    private func spreadY(of bus: RouteBus) -> CGFloat {
-        let base = y(of: bus)
-        let together = view.buses.filter { y(of: $0) == base }.sorted { $0.vehId < $1.vehId }
+    /// 레일 (고속도로에 닿는 구간은 회색)과 고른 정류장 강조
+    private func rail(_ offsets: [CGFloat]) -> some View {
+        ZStack(alignment: .topLeading) {
+            if let index = stops.firstIndex(where: { $0.stationSeq == highlighted }) {
+                Rectangle()
+                    .fill(Theme.routeSoft(route).opacity(0.6))
+                    .frame(height: height(stops[index]))
+                    .frame(maxWidth: .infinity)
+                    .offset(y: offsets[index])
+            }
+            ForEach(0..<max(stops.count - 1, 0), id: \.self) { i in
+                let gray = stops[i].isHighway || stops[i + 1].isHighway
+                Rectangle()
+                    .fill(gray ? Theme.highway : Theme.route(route))
+                    .frame(width: 6, height: center(i + 1, offsets) - center(i, offsets))
+                    .offset(x: railX - 3, y: center(i, offsets))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .allowsHitTesting(false)
+    }
+
+    /// 같은 자리의 버스가 여러 대면 위아래로 벌린다
+    private func spreadY(of bus: RouteBus, _ offsets: [CGFloat]) -> CGFloat {
+        let base = y(of: bus, offsets)
+        let together = view.buses.filter { y(of: $0, offsets) == base }.sorted { $0.vehId < $1.vehId }
         guard together.count > 1, let k = together.firstIndex(where: { $0.id == bus.id }) else { return base }
-        let gap = min(32, rowHeight * 0.9 / CGFloat(together.count - 1))
+        let gap: CGFloat = 36
         return base + gap * (CGFloat(k) - CGFloat(together.count - 1) / 2)
     }
 
-    private func y(of bus: RouteBus) -> CGFloat {
-        if let lane = entering.firstIndex(where: { $0.id == bus.id }) {
-            return 30 + laneHeight * (CGFloat(lane) + 0.5)
-        }
-        guard let index = stops.lastIndex(where: { $0.stationSeq <= bus.currentSeq }) else { return enteringHeight }
+    private func y(of bus: RouteBus, _ offsets: [CGFloat]) -> CGFloat {
+        guard let index = stops.lastIndex(where: { $0.stationSeq <= bus.currentSeq }) else { return 0 }
         let atStop = stops[index].stationSeq == bus.currentSeq && bus.isAtStop
-        return enteringHeight + rowHeight * (CGFloat(index) + (atStop ? 0.5 : 1.0))
+        return atStop ? center(index, offsets) : offsets[index] + height(stops[index])  // 다음 줄과의 경계
     }
 
-    private func stopRow(_ stop: RouteStop) -> some View {
+    @ViewBuilder
+    private func stopRow(_ stop: RouteStop, firstOfHighwayRun: Bool) -> some View {
+        if stop.isTarget {
+            Button { onSelect(stop) } label: { rowContent(stop, firstOfHighwayRun: firstOfHighwayRun) }
+                .buttonStyle(.plain)
+                .accessibilityHint("이 정류장의 탈 확률 보기")
+        } else {
+            // 눌러도 되지 않는 줄은 버튼으로 만들지 않는다 (disabled 버튼은 자동으로 흐리게 그려진다)
+            rowContent(stop, firstOfHighwayRun: firstOfHighwayRun)
+        }
+    }
+
+    private func rowContent(_ stop: RouteStop, firstOfHighwayRun: Bool) -> some View {
         let isHighlighted = stop.stationSeq == highlighted
-        return Button {
-            onSelect(stop)
-        } label: {
-            ZStack(alignment: .topLeading) {
-                Rectangle().fill(isHighlighted ? Theme.routeSoft(route).opacity(0.6) : Color.clear)
-                Circle()
-                    .fill(Theme.card)
-                    .frame(width: 14, height: 14)
-                    .overlay(Circle().stroke(Theme.route(route), lineWidth: 3))
-                    .offset(x: railX - 7, y: rowHeight / 2 - 7)
-                HStack(spacing: 6) {
-                    Text(stop.stationName)
-                        .font(.system(size: 15, weight: isHighlighted ? .heavy : .medium))
-                        .foregroundStyle(isHighlighted ? Theme.route(route) : (stop.isTarget ? .primary : .secondary))
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                    if stop.isTarget {
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.tertiary)
-                    }
+        let rowHeight = height(stop)
+        return ZStack(alignment: .topLeading) {
+            Color.clear
+            dot(stop, rowHeight: rowHeight)
+            HStack(spacing: 6) {
+                if firstOfHighwayRun {
+                    Label("고속도로", systemImage: "road.lanes")
+                        .font(.system(size: 10, weight: .bold))
+                        .labelStyle(.titleAndIcon)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .foregroundStyle(.white)
+                        .background(Theme.highway, in: RoundedRectangle(cornerRadius: 5))
                 }
-                .frame(height: rowHeight)
-                .padding(.leading, nameX)
-                .padding(.trailing, 16)
+                Text(stop.displayName)
+                    .font(.system(size: nameSize(stop), weight: isHighlighted ? .heavy : (stop.isPassThrough ? .regular : .medium)))
+                    .foregroundStyle(nameColor(stop, highlighted: isHighlighted))
+                    .lineLimit(1)
+                if stop.isTarget, let direction = stop.direction {
+                    Text(direction).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                if stop.stationSeq == view.turnSeq {
+                    Text("회차").font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .foregroundStyle(.secondary)
+                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 4))
+                }
+                Spacer(minLength: 4)
+                if stop.isTarget {
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.tertiary)
+                }
+            }
+            .frame(height: rowHeight)
+            .padding(.leading, nameX)
+            .padding(.trailing, 16)
+            if !stop.isPassThrough {
                 Rectangle().fill(Theme.hairline.opacity(0.4)).frame(height: 0.5)
                     .offset(x: nameX, y: rowHeight - 0.5)
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .disabled(!stop.isTarget)
-        .accessibilityHint(stop.isTarget ? "이 정류장의 탈 확률 보기" : "예측하지 않는 정류장")
+        .contentShape(Rectangle())
+    }
+
+    private func nameSize(_ stop: RouteStop) -> CGFloat { stop.isPassThrough ? 12.5 : 15 }
+
+    private func nameColor(_ stop: RouteStop, highlighted: Bool) -> Color {
+        if highlighted { return Theme.route(route) }
+        if stop.isHighway { return Theme.highwayText }
+        if stop.isVia { return .secondary }
+        return stop.isTarget ? .primary : .secondary
+    }
+
+    @ViewBuilder
+    private func dot(_ stop: RouteStop, rowHeight: CGFloat) -> some View {
+        let size: CGFloat = stop.isHighway ? 9 : (stop.isVia ? 7 : 14)
+        Circle()
+            .fill(stop.isHighway ? Theme.highway : (stop.isVia ? Theme.route(route).opacity(0.5) : Theme.card))
+            .frame(width: size, height: size)
+            .overlay(Circle().stroke(Theme.route(route).opacity(stop.kind == "campus" ? 0.45 : 1),
+                                     lineWidth: stop.isPassThrough ? 0 : 3))
+            .offset(x: railX - size / 2, y: rowHeight / 2 - size / 2)
     }
 
     /// 레일 위 버스 아이콘 + 왼쪽에 지금 잔여석·차량번호
@@ -216,7 +281,7 @@ struct StopRail: View {
                 Text("\(bus.currentSeats)석")
                     .font(.system(size: 12.5, weight: .heavy))
                     .monospacedDigit()
-                    .foregroundStyle(bus.currentSeats == 0 ? Color(hex: 0xB4570A) : .primary)
+                    .foregroundStyle(Theme.seatText(bus.currentSeats))
                 Text(bus.plateShort).font(.system(size: 10)).foregroundStyle(.secondary)
             }
             .frame(width: railX - 13 - 6 - 8, alignment: .trailing)
