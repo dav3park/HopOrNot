@@ -13,13 +13,23 @@ GET /line?route=M5107&station_seq=40          내 정류장으로 오는 버스:
 GET /recommend?route=M5107&station_seq=40     가까운 승차 정류장을 내가 탈 확률 순으로
 
 새 수집이 들어왔을 때만 다시 계산한다 (수집 간격 2–7분, 계산 1–2초).
+
+환경 변수 API_KEY 가 있으면 /health 를 뺀 모든 요청에 X-API-Key 헤더가 맞아야 한다 (없으면 인증 없음, 개발용).
+서버가 시작되면 백그라운드에서 현재 스냅샷과 지난 7일 도착 기록을 미리 계산하고 5분마다 갱신해서,
+첫 사용자가 12초를 기다리지 않게 한다.
 """
+import asyncio
+import hmac
+import logging
+import os
 import threading
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Literal
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from src.config import ROUTES, TIMEZONE
@@ -29,10 +39,45 @@ from src.live import (HISTORY_DAYS, history_view, line_view, load_artifacts, pat
                       stop_prediction)
 from src.split import service_date
 
-app = FastAPI(title="HopOrNot 추론 서버")
+API_KEY = os.environ.get("API_KEY") or None
+WARM_SECONDS = 300
+log = logging.getLogger("hopornot")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    async def warm():
+        while True:
+            try:
+                await asyncio.to_thread(current_snapshot)
+                await asyncio.to_thread(history_events)
+            except Exception:  # 수집이 멈췄거나 DB가 잠깐 안 될 때: 다음 주기에 다시
+                log.exception("warm-up 실패")
+            await asyncio.sleep(WARM_SECONDS)
+
+    task = asyncio.create_task(warm())
+    yield
+    task.cancel()
+
+
+# 키가 있으면 문서 페이지도 닫는다 (브라우저는 헤더를 못 보내므로)
+app = FastAPI(title="HopOrNot 추론 서버", lifespan=lifespan,
+              docs_url=None if API_KEY else "/docs", redoc_url=None if API_KEY else "/redoc",
+              openapi_url=None if API_KEY else "/openapi.json")
+
+
+@app.middleware("http")
+async def require_api_key(request: Request, call_next):
+    if API_KEY and request.url.path != "/health":
+        if not hmac.compare_digest(request.headers.get("x-api-key", ""), API_KEY):
+            return JSONResponse({"detail": "접근 키가 없거나 틀렸다"}, status_code=401)
+    return await call_next(request)
+
+
 engine = make_engine()
 artifacts = load_artifacts()
-_lock = threading.Lock()
+_lock = threading.Lock()          # 현재 스냅샷
+_history_lock = threading.Lock()  # 지난 7일 (수십 초 걸리므로 스냅샷과 잠금을 나눈다)
 _cache: dict = {"latest": None, "snapshot": None}
 _history: dict = {"day": None, "events": None}
 RouteName = Literal["1112", "M5107", "5100"]
@@ -128,7 +173,7 @@ def history_events():
     if latest is None:
         raise HTTPException(503, "수집된 관측이 없다")
     today = service_date(pd.Series([latest])).iloc[0]
-    with _lock:
+    with _history_lock:
         if _history["day"] != today:
             observations = read_observations(engine, today - pd.Timedelta(days=HISTORY_DAYS), today - pd.Timedelta(days=1))
             _history.update(day=today, events=arrival_events(assign_trips(observations), artifacts.stops))

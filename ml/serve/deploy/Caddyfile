@@ -1,0 +1,5 @@
+# SITE_ADDRESS 예: 54-116-10-20.sslip.io (Let's Encrypt 인증서를 Caddy가 알아서 받고 갱신한다)
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy serve:8000
+}

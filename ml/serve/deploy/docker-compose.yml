@@ -1,0 +1,47 @@
+# 추론 서버 배포용. 수집기(~/HopOrNot/collector)와 별도 폴더·별도 컴포즈 프로젝트라서 수집기는 건드리지 않는다.
+# 수집기의 도커 네트워크(collector_default)에 붙어 DB(`db`)를 읽기 전용 계정으로만 연다.
+#
+#   cd ~/hopornot-serve
+#   docker compose up -d --build serve                 # 서버 안에서만 (127.0.0.1:8000)
+#   docker compose --profile public up -d              # + Caddy HTTPS (.env 의 SITE_ADDRESS 필요, 80·443 열림)
+name: hopornot-serve
+
+services:
+  serve:
+    build:
+      context: ./ml
+      dockerfile: serve/Dockerfile
+    env_file: .env            # DB 읽기 전용 계정, API_KEY
+    environment:
+      TZ: Asia/Seoul
+    cpus: "1.0"               # 지난 7일 계산이 수집기·DB를 굶기지 않게
+    mem_limit: 640m           # 측정: 약 420MB
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks: [default, collector]
+
+  caddy:
+    image: caddy:2
+    profiles: [public]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-}   # public 프로파일에서만 쓴다. 비어 있으면 Caddy가 시작하지 않는다
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [serve]
+    mem_limit: 128m
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  collector:
+    name: collector_default
+    external: true

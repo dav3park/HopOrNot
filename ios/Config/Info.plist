@@ -8,5 +8,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- 빌드할 때 Config/Secrets.xcconfig 의 HOPORNOT_API_KEY 가 들어간다 (없으면 빈 값) -->
+	<key>HopOrNotAPIKey</key>
+	<string>$(HOPORNOT_API_KEY)</string>
 </dict>
 </plist>

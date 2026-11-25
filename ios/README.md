@@ -16,6 +16,20 @@ SwiftUI 앱. 추론 서버(`ml/serve`)를 직접 부르고, 서버가 없으면 
 - **탈 확률**: P(k번째 버스까지 탐) = P(내 앞 인원 < 1–k번 버스 좌석 합) (`ml/src/live.py`).
 - **예상 잔여석**: 단계 확률을 좌석 수 분포로 편 중앙값과 10–90% 범위.
 
+## 접근 키를 앱에 넣기
+
+폰에서 키를 입력하지 않아도 되게, 빌드할 때 키가 앱에 들어간다. 키는 **Git에 올라가지 않는** `Config/Secrets.xcconfig`에 둔다.
+
+```bash
+cp ios/Config/Secrets.example.xcconfig ios/Config/Secrets.xcconfig
+# 키를 파일에 넣는다 (서버에서 읽기):
+printf 'HOPORNOT_API_KEY = %s\n' "$(ssh bus 'grep ^API_KEY ~/hopornot-serve/.env | cut -d= -f2')" > ios/Config/Secrets.xcconfig
+```
+
+- 키가 들어 있으면 앱은 처음부터 **실서버 모드**로 시작하고 (주소 기본값 `https://54-116-10-20.sslip.io`), 없으면 데모로 시작한다. 설정에서 직접 넣은 키가 있으면 그것이 우선한다.
+- 앱 파일(.app)을 받은 사람은 키를 꺼낼 수 있다. 개인·수업용으로는 충분하고, 키가 새면 서버 `.env`의 `API_KEY`를 바꾸고 앱을 다시 빌드한다.
+- `Secrets.xcconfig`가 없어도 빌드는 된다 (키가 빈 값이라 데모로 시작).
+
 ## 실행
 
 ```bash
