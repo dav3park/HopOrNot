@@ -52,62 +52,40 @@ curl "localhost:8000/predict?route=M5107&station_seq=36"
 
 ## 서버에 배포
 
-학습 산출물은 Git에 없으므로 맥에서 서버로 복사한다:
+수집 서버(ssh 별칭 `bus`)의 `~/hopornot-serve`에 **수집기와 별도 폴더·별도 컴포즈**로 올린다. 수집기(`~/HopOrNot/collector`)는 건드리지 않고 재시작하지도 않는다. 서버의 저장소는 ML 이전 커밋이라 `git pull`로 갱신하지 않는다.
 
 ```bash
-cd ml
-ssh bus 'mkdir -p ~/HopOrNot/ml/models ~/HopOrNot/ml/data/interim'
-scp models/lgbm.txt models/waiting.json models/waiting_cells.parquet bus:~/HopOrNot/ml/models/
-scp data/interim/stops.parquet data/interim/boarding_profile.parquet bus:~/HopOrNot/ml/data/interim/
+ml/serve/deploy/deploy.sh            # 학습 산출물·코드 복사 → 읽기 전용 DB 계정·접근 키 생성 → 빌드·실행
 ```
 
-`collector/docker-compose.yml`의 `services:` 아래에 추가하면 같은 네트워크에서 DB(`db`)에 붙는다:
+- **읽기 전용 DB 계정** `hopornot_ro` (`bus_observation`, `route_station`에 SELECT만). 추론 서버는 밖에 열 서비스라 수집기의 쓰기 계정을 쓰지 않는다. 비밀번호와 접근 키(`API_KEY`)는 서버 `~/hopornot-serve/.env`에만 있다 (`setup_server.sh`, 이미 있으면 바꾸지 않는다).
+- 컨테이너는 `127.0.0.1:8000`에만 열리고 수집기의 도커 네트워크(`collector_default`)로 DB(`db`)에 붙는다. CPU 1코어, 메모리 640MB로 제한한다.
+- 서버 시작 직후 백그라운드에서 현재 스냅샷과 지난 7일을 미리 계산한다 (이 서버에서 지난 7일은 약 45초, 그 사이 `/route` 등은 0.5초에 응답).
+- 모델을 다시 학습했으면 같은 명령으로 다시 올린다.
+- 되돌리기: `ssh bus 'cd ~/hopornot-serve && docker compose down'` (DB 계정까지 지우려면 `DROP ROLE hopornot_ro;`).
 
-```yaml
-  serve:
-    build:
-      context: ../ml
-      dockerfile: serve/Dockerfile
-    env_file: .env              # POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
-    environment:
-      TZ: Asia/Seoul
-      DB_HOST: db
-    depends_on:
-      db:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:8000:8000"   # 서버 안에서만. 앱 연결 때 Spring Boot API나 리버스 프록시 뒤에 둔다
-    mem_limit: 640m             # 모델 적재 약 290MB + 계산
-    restart: unless-stopped
-```
+### 시험 (서버 안에서만 열린 상태)
 
 ```bash
-cd ~/HopOrNot/collector
-docker compose up -d --build serve
-curl localhost:8000/health
+ssh -N -L 8000:127.0.0.1:8000 bus        # 다른 터미널
+curl -H "X-API-Key: $(ssh bus 'grep ^API_KEY ~/hopornot-serve/.env | cut -d= -f2')" localhost:8000/route?route=M5107
 ```
 
-서버 메모리는 1.9GB이고 수집기·DB가 약 230MB를 쓴다 (2026-11-12). 이미지는 약 1GB다.
-모델을 다시 학습하면 위 `scp`를 다시 하고 `docker compose up -d --build serve`.
+앱은 설정에서 "추론 서버", 주소 `http://localhost:8000`, 접근 키를 넣는다 (시뮬레이터).
 
-## 학습과 같은 특징인지 점검
+### 밖에 열기 (실기기 · 현장 검증)
 
-```bash
-python -m src.live --check 2026-11-11T18:30
-```
+iOS는 HTTP를 막으므로 HTTPS가 필요하다. 서버에 Caddy를 함께 띄우면 Let's Encrypt 인증서를 알아서 받고 갱신한다.
 
-그 시각까지의 관측만으로 실시간 특징을 만들고 학습 샘플의 특징과 비교한다.
-2026-11-08 13:00, 11-10 07:50, 11-11 18:30에서 모든 특징이 같았다.
+1. AWS 보안 그룹 인바운드에 **80, 443**(TCP, 0.0.0.0/0)을 연다. 8000과 5432는 열지 않는다.
+2. 서버 IP가 바뀌지 않게 탄력적 IP를 연결한다.
+3. 서버 `~/hopornot-serve/.env`의 `SITE_ADDRESS`에 주소를 넣는다. 도메인이 없으면 IP를 이름으로 바꿔 주는 무료 서비스를 쓴다. 예: IP가 `43.203.245.101`이면 `43-203-245-101.sslip.io`.
+4. `ml/serve/deploy/deploy.sh --public` (또는 서버에서 `docker compose --profile public up -d`).
+5. 앱 설정: 주소 `https://43-203-245-101.sslip.io`, 접근 키.
 
-## 앱 연결 (실시간)
+접근 키는 요청마다 `X-API-Key` 헤더로 확인한다 (`/health`만 열려 있다). 키가 없으면 문서 페이지도 닫힌다.
 
-맥에서 시험한 결과 (2026-11-25 14:16, 수집 DB에 SSH 터널로 읽기 전용 연결): `/route` 1.0초(첫 호출, 이후 캐시), `/path`·`/line`·`/predict`·`/recommend` 0.1초 이하, `/history` 첫 호출 12.5초 뒤 0.08초, 서버 프로세스 메모리 418MB. 앱을 실서버 모드로 연결해 그 시각에 실제로 달리던 버스가 정류장 목록·노선도에 뜨는 것까지 확인했다.
+## 앱 연결 측정
 
-서버에 올릴 때 필요한 것:
-
-1. **배포**: 위 "서버에 배포"대로 `serve` 서비스를 추가한다 (`mem_limit` 640m, 서버 여유 메모리 약 1.1GB).
-2. **HTTPS**: iOS는 기본으로 HTTP를 막는다. 서버에 Caddy를 앞에 두고 도메인(무료 DuckDNS 등)으로 인증서를 받거나, Cloudflare Tunnel을 쓴다. AWS 보안 그룹에서 80·443만 연다. DB(5432)는 계속 서버 안에서만 연다.
-3. **접근 제한**: 지금 서버는 인증이 없다. 밖에 열기 전에 `X-API-Key` 헤더 확인을 넣고 앱 설정에 키를 둔다 (Caddy 요청 수 제한 병행).
-4. **첫 `/history` 12초**: 서버 시작 때 미리 계산하도록 하고(`history_events()` 호출), 운행일이 바뀌는 새벽 3시에 다시 계산한다.
-5. **앱**: 설정에서 "추론 서버"를 고르고 `https://…` 주소를 넣는다. 목록은 30초, 정류장 화면은 60초마다 갱신한다. `stale: true`(수집 멈춤, 01–06시)면 화면에 표시한다.
-6. **모델 갱신**: 11/27 데이터 마감 뒤 다시 학습하면 `scp`로 산출물을 올리고 `docker compose up -d --build serve`.
+맥에서 수집 DB에 SSH 터널로 붙여 시험한 값 (2026-11-25): `/route` 1.0초(첫 호출), `/path`·`/line`·`/predict`·`/recommend` 0.1초 이하, `/history` 첫 호출 12.5초, 프로세스 메모리 418MB.
+수집 서버에 배포한 뒤 (서버 CPU 1코어 제한): 컨테이너 메모리 349MB, 서버 여유 메모리 약 850MB, 디스크 여유 8.3GB. 서버 안에서 모든 API 정상, 수집기·DB 가동 시간 그대로.

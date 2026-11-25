@@ -18,6 +18,7 @@ enum DataSourceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingDemo(let name): "데모 데이터가 없습니다 (\(name))"
+        case .server(401, _): "접근 키가 없거나 틀렸습니다. 설정에서 접근 키를 확인하세요"
         case .server(let code, let message): "서버 오류 \(code): \(message)"
         }
     }
@@ -54,12 +55,14 @@ struct DemoSource: DataSource {
 /// FastAPI 추론 서버 (ml/serve/README.md)
 struct LiveSource: DataSource {
     let baseURL: URL
+    var apiKey: String = ""
 
     private func get<T: Decodable>(_ path: String, _ query: [String: String]) async throws -> T {
         var components = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false)!
         components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         var request = URLRequest(url: components.url!)
-        request.timeoutInterval = 15
+        request.timeoutInterval = 20
+        if !apiKey.isEmpty { request.setValue(apiKey, forHTTPHeaderField: "X-API-Key") }
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
             throw DataSourceError.server(http.statusCode, String(data: data, encoding: .utf8) ?? "")

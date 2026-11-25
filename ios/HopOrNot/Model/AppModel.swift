@@ -20,6 +20,8 @@ final class AppModel {
     // 설정 (UserDefaults에 남긴다)
     var mode: Mode { didSet { defaults.set(mode.rawValue, forKey: "mode"); clearStopData(); routeView = nil; replayIndex = 0 } }
     var serverURL: String { didSet { defaults.set(serverURL, forKey: "serverURL") } }
+    /// 추론 서버 접근 키 (서버 .env 의 API_KEY)
+    var apiKey: String { didSet { defaults.set(apiKey, forKey: "apiKey") } }
 
     var path: [Screen] = []
     private(set) var route: Route?
@@ -43,6 +45,17 @@ final class AppModel {
     init() {
         mode = Mode(rawValue: defaults.string(forKey: "mode") ?? "") ?? .demo
         serverURL = defaults.string(forKey: "serverURL") ?? "http://localhost:8000"
+        apiKey = defaults.string(forKey: "apiKey") ?? ""
+        #if DEBUG
+        // 개발용: -live URL,KEY 로 실서버 모드로 시작
+        let launch = ProcessInfo.processInfo.arguments
+        if let i = launch.firstIndex(of: "-live"), i + 1 < launch.count {
+            let parts = launch[i + 1].split(separator: ",", maxSplits: 1).map(String.init)
+            mode = .live
+            serverURL = parts[0]
+            apiKey = parts.count > 1 ? parts[1] : ""
+        }
+        #endif
         if let raw = defaults.string(forKey: "route"), let route = Route(rawValue: raw) {
             self.route = route
             path = [.route(route)]
@@ -76,7 +89,7 @@ final class AppModel {
     var source: DataSource {
         switch mode {
         case .demo: DemoSource()
-        case .live: LiveSource(baseURL: URL(string: serverURL) ?? URL(string: "http://localhost:8000")!)
+        case .live: LiveSource(baseURL: URL(string: serverURL) ?? URL(string: "http://localhost:8000")!, apiKey: apiKey)
         }
     }
 
