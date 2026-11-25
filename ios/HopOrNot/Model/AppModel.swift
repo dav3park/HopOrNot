@@ -44,7 +44,7 @@ final class AppModel {
 
     init() {
         mode = Mode(rawValue: defaults.string(forKey: "mode") ?? "") ?? .demo
-        serverURL = defaults.string(forKey: "serverURL") ?? "http://localhost:8000"
+        serverURL = defaults.string(forKey: "serverURL") ?? "https://54-116-10-20.sslip.io"
         apiKey = defaults.string(forKey: "apiKey") ?? ""
         #if DEBUG
         // 개발용: -live URL,KEY 로 실서버 모드로 시작
