@@ -6,12 +6,10 @@ struct HopOrNotApp: App {
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                if model.stop == nil {
-                    StopPickerView()
-                } else {
-                    StationView()
-                }
+            @Bindable var model = model
+            NavigationStack(path: $model.path) {
+                StopPickerView()
+                    .navigationDestination(for: Route.self) { RouteScreen(route: $0) }
             }
             .environment(model)
         }

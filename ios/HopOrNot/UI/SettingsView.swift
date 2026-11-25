@@ -24,8 +24,8 @@ struct SettingsView: View {
                          : "추론 서버(ml/serve)의 주소. 시뮬레이터에서는 맥에서 띄운 서버를 http://localhost:8000 으로 부를 수 있습니다.")
                 }
                 Section {
-                    Button("정류장 다시 고르기") {
-                        model.clearSelection()
+                    Button("노선 다시 고르기") {
+                        model.path = []
                         dismiss()
                     }
                 }

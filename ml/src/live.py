@@ -304,6 +304,39 @@ def line_view(snap: Snapshot, art: Artifacts, route: str, seq: int) -> dict:
     }
 
 
+def route_view(snap: Snapshot, art: Artifacts, route: str, direction: str) -> dict:
+    """정류장 목록 화면 (네이버 버스처럼): 한 방향의 실제 정류장 전체와, 그 구간을 달리는 버스의 지금 위치.
+
+    정류장 목록은 체크포인트를 뺀 실제 정류장이다. 예측 대상(is_target)만 내 정류장으로 고를 수 있다.
+    버스는 가장 최근 수집의 위치이고, 버스가 지난 마지막 순번(current_seq)과 정류장 도착 여부(state_cd 1)로 놓는다.
+    """
+    stops = art.stops[(art.stops["route"] == route) & (art.stops["direction"] == direction) & ~art.stops["is_checkpoint"]]
+    if stops.empty:
+        raise KeyError(f"{route} {direction} 정류장이 없다")
+    stops = stops.sort_values("station_seq")
+    first, last = int(stops["station_seq"].min()), int(stops["station_seq"].max())
+    trips = snap.trips[snap.trips["route"] == route]
+    latest = trips[trips["collected_at"] == trips["collected_at"].max()]
+    # 이 방향 첫 정류장으로 오고 있는 버스도 보인다: 반대 방향 마지막 정류장을 지난 뒤(고속도로·캠퍼스 안쪽)부터
+    route_stops = art.stops[art.stops["route"] == route]
+    other = route_stops[(route_stops["direction"].notna()) & (route_stops["direction"] != direction)
+                        & (route_stops["station_seq"] < first)]["station_seq"]
+    lower = int(other.max()) + 1 if len(other) else 0
+    on_route = latest[(latest["station_seq"] >= lower) & (latest["station_seq"] <= last)].sort_values("station_seq")
+    names = route_stops.set_index("station_seq")["station_name"]
+    return {
+        "route": route, "direction": direction, "generated_at": snap.generated_at.isoformat(),
+        "stops": [{"station_seq": int(r.station_seq), "station_name": r.station_name, "lat": float(r.y), "lon": float(r.x),
+                   "is_target": bool(r.is_target), "zone": r.zone if isinstance(r.zone, str) else None}
+                  for r in stops.itertuples(index=False)],
+        "buses": [{"veh_id": int(r.veh_id), "plate_no": r.plate_no, "current_seq": int(r.station_seq),
+                   "current_station_name": names.get(int(r.station_seq), ""),
+                   "stops_to_first": int(((stops["station_seq"] > r.station_seq) & (stops["station_seq"] <= first)).sum()),
+                   "state_cd": int(r.state_cd), "current_seats": int(r.remain_seat_cnt)}
+                  for r in on_route.itertuples(index=False)],
+    }
+
+
 def recommend(snap: Snapshot, art: Artifacts, route: str, seq: int, user_arrived_at: pd.Timestamp | None = None,
               now: pd.Timestamp | None = None) -> dict:
     """같은 노선·방향의 가까운 승차 정류장 중 다음 버스에 내가 탈 확률이 높은 순.

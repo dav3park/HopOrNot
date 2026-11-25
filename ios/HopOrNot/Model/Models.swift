@@ -29,6 +29,42 @@ struct StopInfo: Codable, Identifiable, Hashable {
     var supportsMySeat: Bool { zone == "출발권" || zone == "서울권" }
 }
 
+/// 정류장 목록 화면: 한 방향의 정류장 전체와 지금 달리는 버스 (GET /route)
+struct RouteView: Codable {
+    let route: String
+    let direction: String
+    let generatedAt: Date
+    let stops: [RouteStop]
+    let buses: [RouteBus]
+}
+
+struct RouteStop: Codable, Identifiable, Hashable {
+    let stationSeq: Int
+    let stationName: String
+    let lat: Double
+    let lon: Double
+    let isTarget: Bool
+    let zone: String?
+    var id: Int { stationSeq }
+    var info: StopInfo { StopInfo(stationSeq: stationSeq, stationName: stationName, direction: nil, zone: zone) }
+}
+
+struct RouteBus: Codable, Identifiable {
+    let vehId: Int
+    let plateNo: String
+    let currentSeq: Int
+    /// 마지막으로 지난 곳 (고속도로 체크포인트 이름일 수 있다)
+    let currentStationName: String?
+    let stateCd: Int
+    let currentSeats: Int
+    var id: Int { vehId }
+    var plateShort: String { String(plateNo.suffix(4)) }
+    /// 정류장에 도착해 있음 (state_cd 1). 아니면 그 정류장을 지나 다음 정류장으로 가는 중
+    var isAtStop: Bool { stateCd == 1 }
+    /// "양재IC(경유)" → "양재IC"
+    var placeShort: String { (currentStationName ?? "").replacingOccurrences(of: "(경유)", with: "") }
+}
+
 struct Prediction: Codable {
     let route: String
     let stationSeq: Int

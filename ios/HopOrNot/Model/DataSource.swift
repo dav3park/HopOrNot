@@ -3,6 +3,7 @@ import Foundation
 /// 앱이 쓰는 데이터. 추론 서버(Live) 또는 앱에 넣어 둔 과거 실제 데이터(Demo).
 protocol DataSource: Sendable {
     func stops(route: Route) async throws -> [StopInfo]
+    func route(_ route: Route, direction: String) async throws -> RouteView
     func predict(route: Route, stationSeq: Int) async throws -> Prediction
     func line(route: Route, stationSeq: Int) async throws -> LineView
     func recommend(route: Route, stationSeq: Int) async throws -> Recommendation
@@ -30,6 +31,7 @@ struct DemoSource: DataSource {
     }
 
     func stops(route: Route) async throws -> [StopInfo] { try load("stops_\(route.rawValue)") }
+    func route(_ route: Route, direction: String) async throws -> RouteView { try load("route_\(route.rawValue)_\(direction)") }
     func predict(route: Route, stationSeq: Int) async throws -> Prediction { try load("predict_\(route.rawValue)_\(stationSeq)") }
     func line(route: Route, stationSeq: Int) async throws -> LineView { try load("line_\(route.rawValue)_\(stationSeq)") }
     func recommend(route: Route, stationSeq: Int) async throws -> Recommendation { try load("recommend_\(route.rawValue)_\(stationSeq)") }
@@ -58,6 +60,9 @@ struct LiveSource: DataSource {
     }
 
     func stops(route: Route) async throws -> [StopInfo] { try await get("stops", ["route": route.rawValue]) }
+    func route(_ route: Route, direction: String) async throws -> RouteView {
+        try await get("route", ["route": route.rawValue, "direction": direction])
+    }
     func predict(route: Route, stationSeq: Int) async throws -> Prediction {
         try await get("predict", ["route": route.rawValue, "station_seq": String(stationSeq)])
     }

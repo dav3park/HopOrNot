@@ -1,4 +1,4 @@
-"""iOS 앱 데모 데이터: 과거 한 시각의 실제 관측으로 추론 서버 응답(/stops, /predict, /line, /recommend)을 만든다.
+"""iOS 앱 데모 데이터: 과거 한 시각의 실제 관측으로 추론 서버 응답(/stops, /route, /predict, /line, /recommend)을 만든다.
 
     cd ml && python -m serve.demo_fixtures --at 2026-11-20T18:10
 
@@ -13,7 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.config import RAW_DIR, ROUTES, TIMEZONE
-from src.live import line_view, load_artifacts, recommend, snapshot, stop_prediction
+from src.live import line_view, load_artifacts, recommend, route_view, snapshot, stop_prediction
 from src.split import service_date
 
 OUT = Path(__file__).resolve().parents[2] / "ios" / "HopOrNot" / "Demo"
@@ -43,6 +43,8 @@ def main():
         stops = art.stops[(art.stops["route"] == route) & art.stops["is_target"]]
         write(f"stops_{route}", [{"station_seq": int(r.station_seq), "station_name": r.station_name,
                                   "direction": r.direction, "zone": r.zone} for r in stops.itertuples(index=False)])
+        for direction in ("서울행", "영통행"):
+            write(f"route_{route}_{direction}", route_view(snap, art, route, direction))
         for seq in stops["station_seq"]:
             seq = int(seq)
             write(f"predict_{route}_{seq}", stop_prediction(snap, art, route, seq, now=at))
