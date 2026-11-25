@@ -42,10 +42,19 @@ final class AppModel {
     private let defaults = UserDefaults.standard
     private var replayIndex = 0
 
+    /// 빌드할 때 Config/Secrets.xcconfig 에서 들어온 접근 키 (없으면 빈 문자열)
+    static var bundledKey: String {
+        let value = Bundle.main.object(forInfoDictionaryKey: "HopOrNotAPIKey") as? String ?? ""
+        return value.contains("$(") ? "" : value
+    }
+
     init() {
-        mode = Mode(rawValue: defaults.string(forKey: "mode") ?? "") ?? .demo
+        // 키가 앱에 들어 있으면 처음부터 실서버로, 없으면 데모로 시작한다
+        mode = Mode(rawValue: defaults.string(forKey: "mode") ?? "") ?? (Self.bundledKey.isEmpty ? .demo : .live)
         serverURL = defaults.string(forKey: "serverURL") ?? "https://54-116-10-20.sslip.io"
-        apiKey = defaults.string(forKey: "apiKey") ?? ""
+        // 설정에서 직접 넣은 키가 있으면 그것을, 없으면 빌드에 들어온 키를
+        let stored = defaults.string(forKey: "apiKey") ?? ""
+        apiKey = stored.isEmpty ? Self.bundledKey : stored
         #if DEBUG
         // 개발용: -live URL,KEY 로 실서버 모드로 시작
         let launch = ProcessInfo.processInfo.arguments
@@ -53,7 +62,7 @@ final class AppModel {
             let parts = launch[i + 1].split(separator: ",", maxSplits: 1).map(String.init)
             mode = .live
             serverURL = parts[0]
-            apiKey = parts.count > 1 ? parts[1] : ""
+            if parts.count > 1 { apiKey = parts[1] }
         }
         #endif
         if let raw = defaults.string(forKey: "route"), let route = Route(rawValue: raw) {

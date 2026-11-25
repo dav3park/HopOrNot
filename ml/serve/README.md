@@ -83,7 +83,7 @@ iOS는 HTTP를 막으므로 HTTPS가 필요하다. 서버에 Caddy를 함께 띄
 2. 탄력적 IP `54.116.10.20`을 서버(`i-0d26c6f238be3227d`)에 연결했다. 서버를 껐다 켜도 주소가 바뀌지 않는다. 맥의 `~/.ssh/config`의 `bus`도 이 주소다.
 3. 서버 `~/hopornot-serve/.env`의 `SITE_ADDRESS=54-116-10-20.sslip.io` (IP를 이름으로 바꿔 주는 무료 서비스, 가입 불필요).
 4. `docker compose --profile public up -d` (또는 `ml/serve/deploy/deploy.sh --public`).
-5. 앱 설정: 서버 주소는 앱 기본값이 위 주소다. 접근 키만 넣는다: `ssh bus 'grep ^API_KEY ~/hopornot-serve/.env'`.
+5. 앱: 서버 주소는 앱 기본값이 위 주소다. 접근 키는 빌드할 때 `ios/Config/Secrets.xcconfig`(Git 제외)에서 앱에 들어가므로 폰에서 입력하지 않아도 된다 (`ios/README.md` 접근 키를 앱에 넣기).
 
 다른 IP로 옮기면 3번의 주소와 앱의 기본 주소(`AppModel.swift`)를 바꾸고 4번을 다시 한다.
 `nc`로 포트를 볼 때 80·443이 "거절(refused)"이면 규칙은 열려 있고 받는 프로그램(Caddy)이 없는 것이고, "시간 초과(timed out)"이면 보안 그룹이 막는 것이다.
