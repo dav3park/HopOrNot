@@ -6,9 +6,10 @@ GET /health                                   마지막 수집 시각, 모델 �
 GET /stops?route=M5107                        예측 대상 정류장 목록
 GET /predict?route=M5107&station_seq=40       다가오는 버스들의 좌석 확률 + 버스별 "이 버스까지 내가 탈 확률"
     &arrived_at=2026-11-12T18:05:00+09:00     (선택) 내가 정류장에 도착한 시각. 없으면 지금
-GET /route?route=M5107&direction=영통행          정류장 목록: 한 방향의 정류장 전체 + 지금 달리는 버스 위치
+GET /route?route=M5107                        정류장 목록: 노선 한 바퀴(캠퍼스 → 서울 → 캠퍼스)를 한 줄로 + 지금 달리는 버스
+GET /path?route=M5107                         지도용 도로 경로 (일반 도로 / 고속도로 선분)
 GET /history?route=M5107&station_seq=40       지난 7일 이 정류장 도착 잔여석, 30분 단위 (하루 한 번 계산)
-GET /line?route=M5107&station_seq=40          노선도·지도: 앞쪽 정류장, 버스 위치, 버스별 정류장별 1석 이상 확률, 경로
+GET /line?route=M5107&station_seq=40          내 정류장으로 오는 버스: 위치, 버스별 정류장별 1석 이상 확률
 GET /recommend?route=M5107&station_seq=40     가까운 승차 정류장을 내가 탈 확률 순으로
 
 새 수집이 들어왔을 때만 다시 계산한다 (수집 간격 2–7분, 계산 1–2초).
@@ -24,7 +25,8 @@ from sqlalchemy import text
 from src.config import ROUTES, TIMEZONE
 from src.export_db import make_engine, read_observations
 from src.build_trips import arrival_events, assign_trips
-from src.live import HISTORY_DAYS, history_view, line_view, load_artifacts, recommend, route_view, snapshot, stop_prediction
+from src.live import (HISTORY_DAYS, history_view, line_view, load_artifacts, path_view, recommend, route_view, snapshot,
+                      stop_prediction)
 from src.split import service_date
 
 app = FastAPI(title="HopOrNot 추론 서버")
@@ -108,11 +110,16 @@ def recommend_stops(route: RouteName, station_seq: int,
 
 
 @app.get("/route")
-def route_stops(route: RouteName, direction: Literal["서울행", "영통행"]):
+def route_stops(route: RouteName):
     try:
-        return route_view(current_snapshot(), artifacts, route, direction)
+        return route_view(current_snapshot(), artifacts, route)
     except KeyError as error:
         raise HTTPException(404, str(error)) from error
+
+
+@app.get("/path")
+def route_path(route: RouteName):
+    return path_view(artifacts, route)
 
 
 def history_events():

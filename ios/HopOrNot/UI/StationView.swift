@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 정류장 화면: AI 판단 → 노선도/지도 → 오는 버스(예상 잔여석, 좌석 확률) → 지난 7일 → 탈 확률 높은 정류장
+/// 정류장 화면: AI 판단 → 노선도/지도 → 오는 버스(이번·다음, 더보기) → 탈 확률 높은 정류장 → 지난 7일 도착 잔여석
 struct StationView: View {
     @Environment(AppModel.self) private var model
     #if DEBUG
@@ -16,8 +16,19 @@ struct StationView: View {
     }
 
     var body: some View {
-        ScrollView {
-            StationContent(view: $view)
+        ScrollViewReader { proxy in
+            ScrollView {
+                StationContent(view: $view)
+            }
+            #if DEBUG
+            .onChange(of: model.history == nil) {
+                // 개발용: -scrollTo history|buses|recommend
+                let arguments = ProcessInfo.processInfo.arguments
+                if let i = arguments.firstIndex(of: "-scrollTo"), i + 1 < arguments.count, model.history != nil {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { proxy.scrollTo(arguments[i + 1], anchor: .top) }
+                }
+            }
+            #endif
         }
         .background(Theme.background)
         .refreshable { await model.refreshStop() }
@@ -47,6 +58,7 @@ struct StationView: View {
 struct StationContent: View {
     @Environment(AppModel.self) private var model
     @Binding var view: StationView.ViewKind
+    @State private var showAllBuses = false
 
     var body: some View {
         let decision = model.decision
@@ -65,7 +77,7 @@ struct StationContent: View {
                     if let seq = decision.alternativeSeq { Task { await model.switchStop(to: seq) } }
                 }
 
-                if let route = model.route, let line = model.line {
+                if let route = model.route, let line = model.line, let stops = model.routeView?.stops, let mySeq = model.stop?.stationSeq {
                     VStack(alignment: .leading, spacing: 10) {
                         Picker("보기", selection: $view) {
                             ForEach(StationView.ViewKind.allCases) { Text($0.rawValue).tag($0) }
@@ -74,38 +86,63 @@ struct StationContent: View {
 
                         switch view {
                         case .strip:
-                            RouteStripView(route: route, line: line, prediction: model.prediction,
-                                           recommendedOrder: decision.recommendedOrder)
+                            RouteStripView(route: route, stops: stops, line: line, prediction: model.prediction,
+                                           recommendedOrder: decision.recommendedOrder, mySeq: mySeq)
+                            ProbabilityLegend(title: "점: 1석 이상")
+                                .frame(maxWidth: .infinity)
                         case .map:
-                            BusMapView(route: route, line: line, prediction: model.prediction,
-                                       recommendedOrder: decision.recommendedOrder)
-                                .frame(height: 360)
+                            BusMapView(route: route, stops: stops, segments: model.geometry?.segments ?? [],
+                                       otherBuses: model.routeView?.buses ?? [], line: line, prediction: model.prediction,
+                                       recommendedOrder: decision.recommendedOrder, mySeq: mySeq)
+                                .frame(height: 440)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
-                        ProbabilityLegend(title: view == .strip ? "점: 1석 이상" : "탈 확률")
+                            HStack(spacing: 14) {
+                                mapLegend(Theme.route(route), "일반 도로")
+                                mapLegend(Theme.highway, "고속도로")
+                                Text("핀: 오는 버스 (1 = 이번)").font(.system(size: 11)).foregroundStyle(.secondary)
+                            }
                             .frame(maxWidth: .infinity)
+                        }
                     }
                     .card()
                 }
 
                 if let route = model.route, let prediction = model.prediction, !prediction.buses.isEmpty {
-                    Text("오는 버스").font(.system(size: 17, weight: .bold)).padding(.horizontal, 4)
-                    ForEach(Array(prediction.buses.prefix(5).enumerated()), id: \.element.id) { order, bus in
+                    let total = min(prediction.buses.count, 6)
+                    Text("오는 버스").font(.system(size: 17, weight: .bold)).padding(.horizontal, 4).id("buses")
+                    ForEach(Array(prediction.buses.prefix(showAllBuses ? total : 2).enumerated()), id: \.element.id) { order, bus in
                         BusCard(route: route, bus: bus, order: order, recommended: order == decision.recommendedOrder)
                     }
-                }
-
-                if let route = model.route {
-                    if let history = model.history {
-                        HistoryCard(route: route, history: history, now: model.prediction?.generatedAt ?? .now)
-                    } else if model.prediction != nil {
-                        ProgressView("지난 7일 기록 불러오는 중").font(.system(size: 12)).frame(maxWidth: .infinity).card()
+                    if total > 2 {
+                        Button {
+                            withAnimation { showAllBuses.toggle() }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(showAllBuses ? "접기" : "버스 \(total - 2)대 더보기")
+                                Image(systemName: showAllBuses ? "chevron.up" : "chevron.down")
+                            }
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Theme.card, in: RoundedRectangle(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
 
                 if let route = model.route, let recommendation = model.recommendation, recommendation.candidates.count > 1 {
                     RecommendCard(route: route, recommendation: recommendation) { seq in
                         Task { await model.switchStop(to: seq) }
+                    }
+                    .id("recommend")
+                }
+
+                if let route = model.route {
+                    if let history = model.history {
+                        HistoryCard(route: route, history: history, now: model.prediction?.generatedAt ?? .now)
+                            .id("history")
+                    } else if model.prediction != nil {
+                        ProgressView("지난 7일 도착 잔여석 불러오는 중").font(.system(size: 12)).frame(maxWidth: .infinity).card()
                     }
                 }
 
@@ -115,12 +152,19 @@ struct StationContent: View {
             .padding(.bottom, 24)
     }
 
+    private func mapLegend(_ color: Color, _ label: String) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 16, height: 5)
+            Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let route = model.route {
                 HStack(spacing: 10) {
                     RouteBadge(route: route, size: 26)
-                    Text("\(model.stop?.stationName ?? "") · \(model.direction)")
+                    Text("\(model.stop?.stationName ?? "")\(model.stop?.direction.map { " · \($0)" } ?? "")")
                         .font(.system(size: 15, weight: .semibold))
                         .lineLimit(1)
                     Spacer()

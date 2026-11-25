@@ -3,7 +3,8 @@ import Foundation
 /// 앱이 쓰는 데이터. 추론 서버(Live) 또는 앱에 넣어 둔 과거 실제 데이터(Demo).
 protocol DataSource: Sendable {
     func stops(route: Route) async throws -> [StopInfo]
-    func route(_ route: Route, direction: String) async throws -> RouteView
+    func route(_ route: Route) async throws -> RouteView
+    func path(route: Route) async throws -> RoutePath
     func history(route: Route, stationSeq: Int) async throws -> History
     func predict(route: Route, stationSeq: Int) async throws -> Prediction
     func line(route: Route, stationSeq: Int) async throws -> LineView
@@ -32,11 +33,12 @@ struct DemoSource: DataSource {
     }
 
     func stops(route: Route) async throws -> [StopInfo] { try load("stops_\(route.rawValue)") }
-    func route(_ route: Route, direction: String) async throws -> RouteView { try load("route_\(route.rawValue)_\(direction)") }
+    func route(_ route: Route) async throws -> RouteView { try load("route_\(route.rawValue)") }
+    func path(route: Route) async throws -> RoutePath { try load("path_\(route.rawValue)") }
     func history(route: Route, stationSeq: Int) async throws -> History { try load("history_\(route.rawValue)_\(stationSeq)") }
     /// 정류장 목록 재생용 장면 하나
-    func route(_ route: Route, direction: String, frame: String) async throws -> RouteView {
-        try load("route_\(route.rawValue)_\(direction)_\(frame)")
+    func route(_ route: Route, frame: String) async throws -> RouteView {
+        try load("route_\(route.rawValue)_\(frame)")
     }
     func predict(route: Route, stationSeq: Int) async throws -> Prediction { try load("predict_\(route.rawValue)_\(stationSeq)") }
     func line(route: Route, stationSeq: Int) async throws -> LineView { try load("line_\(route.rawValue)_\(stationSeq)") }
@@ -66,9 +68,8 @@ struct LiveSource: DataSource {
     }
 
     func stops(route: Route) async throws -> [StopInfo] { try await get("stops", ["route": route.rawValue]) }
-    func route(_ route: Route, direction: String) async throws -> RouteView {
-        try await get("route", ["route": route.rawValue, "direction": direction])
-    }
+    func route(_ route: Route) async throws -> RouteView { try await get("route", ["route": route.rawValue]) }
+    func path(route: Route) async throws -> RoutePath { try await get("path", ["route": route.rawValue]) }
     func history(route: Route, stationSeq: Int) async throws -> History {
         try await get("history", ["route": route.rawValue, "station_seq": String(stationSeq)])
     }

@@ -7,6 +7,7 @@
 """
 import argparse
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -37,6 +38,41 @@ EVENT_COLUMNS = {"route": "str", "trip_id": "int64", "station_seq": "int64", "ar
 # 경기버스 공식 지도의 도로 경로 (서울 방향 + 캠퍼스 방향, 운행 순서). frontend 브랜치에서 하성준이 수집
 # (frontend/scripts/sync-gbis-routes.py, 2026-11-12). 정류장 ID·순번이 우리 정류장 표와 모두 같다.
 ROUTE_LINES = ML_DIR / "serve" / "gbis_route_lines.json"
+
+
+HIGHWAY_NAME = re.compile(r"IC|JC|TG|톨게이트|나들목|분기점")
+
+
+def stop_kinds(stops: pd.DataFrame) -> pd.Series:
+    """노선 순서로 정류장 종류.
+
+    campus   경희대 안쪽 (예측하지 않음)
+    highway  고속도로·자동차전용도로 구간. 문이 안 열리는 경유 지점이 이어진 구간(run)에 IC·JC·TG 이름이 하나라도
+             있으면 그 구간 전체 (죽전·금곡·서울진입 같은 사이 지점 포함)
+    via      고속도로 이름이 없는 도심 경유 지점 (SKT타워, 시청교차로 …)
+    stop     승하차 정류장
+    """
+    kinds = pd.Series("stop", index=stops.index, dtype="object")
+    for _, group in stops.groupby("route"):
+        group = group.sort_values("station_seq")
+        run: list = []
+
+        def close():
+            if run:
+                named = any(HIGHWAY_NAME.search(stops.loc[i, "station_name"]) for i in run)
+                kinds.loc[run] = "highway" if named else "via"
+            run.clear()
+
+        for index, row in group.iterrows():
+            if row["is_campus"]:
+                close()
+                kinds.loc[index] = "campus"
+            elif row["is_checkpoint"]:
+                run.append(index)
+            else:
+                close()
+        close()
+    return kinds
 
 
 @dataclass
@@ -91,14 +127,16 @@ class Snapshot:
 
 def load_artifacts() -> Artifacts:
     waiting = json.loads((MODELS_DIR / "waiting.json").read_text())
+    stops = pd.read_parquet(INTERIM_DIR / "stops.parquet")
+    stops["kind"] = stop_kinds(stops)
     return Artifacts(
-        stops=pd.read_parquet(INTERIM_DIR / "stops.parquet"),
+        stops=stops,
         profile=pd.read_parquet(INTERIM_DIR / "boarding_profile.parquet"),
         booster=lgb.Booster(model_file=str(MODELS_DIR / "lgbm.txt")),
         waiting=WaitingModel.from_json(waiting),
         cells=pd.read_parquet(MODELS_DIR / "waiting_cells.parquet").set_index(["route", "station_id", "hour"])["cell_ratio"],
         within_stage={int(s): np.array(v) for s, v in waiting["within_stage"].items()},
-        roads=road_paths(pd.read_parquet(INTERIM_DIR / "stops.parquet")),
+        roads=road_paths(stops),
     )
 
 
@@ -258,90 +296,95 @@ def real_ranks(stops: pd.DataFrame) -> pd.Series:
     return (~stops["is_checkpoint"]).groupby(stops["route"]).cumsum()
 
 
+def bus_position(stops: pd.DataFrame, road: RoadPath | None, seq: int, state_cd: int) -> tuple[float, float]:
+    """버스 위치(위도, 경도). 정류장에 도착(state_cd 1)했으면 그 정류장, 아니면 다음 정류장까지 도로의 중간.
+
+    stops는 station_seq가 인덱스인 한 노선의 정류장 표.
+    """
+    here = stops.loc[seq]
+    later = stops[stops.index > seq]
+    if state_cd == 1 or later.empty:
+        return float(here["y"]), float(here["x"])
+    if road is not None:
+        middle = road.between(int(seq), int(later.index[0]))
+        return tuple(float(v) for v in middle[len(middle) // 2])
+    nxt = later.iloc[0]
+    return float((here["y"] + nxt["y"]) / 2), float((here["x"] + nxt["x"]) / 2)
+
+
 def line_view(snap: Snapshot, art: Artifacts, route: str, seq: int) -> dict:
-    """노선도·지도용: 내 정류장 앞쪽 정류장들, 그 사이 버스 위치, 버스마다 정류장별 1석 이상 확률, 노선 경로."""
-    stops = art.stops[art.stops["route"] == route].assign(rank=lambda s: real_ranks(s)).set_index("station_seq")
+    """내 정류장으로 오는 버스들: 위치와, 버스마다 정류장별 1석 이상 확률 (노선도·지도용).
+
+    정류장 목록과 도로 경로는 /route, /path에서 받는다.
+    """
+    stops = art.stops[art.stops["route"] == route].set_index("station_seq")
     if seq not in stops.index or not bool(stops.loc[seq, "is_target"]):
         raise KeyError(f"{route} {seq}번 정류장은 예측 대상이 아니다")
-    mine = stops.loc[seq]
-    window = stops[(stops.index <= seq + 1) & (stops["rank"] >= mine["rank"] - LINE_STOPS_BEFORE) & ~stops["is_checkpoint"]
-                   & (stops["direction"] == mine["direction"])]
     coming = snap.predictions[(snap.predictions["route"] == route) & (snap.predictions["target_seq"] == seq)]
     coming = arrival_order(coming).head(CUMULATIVE_BUSES)
     ahead = snap.predictions[(snap.predictions["route"] == route) & snap.predictions["veh_id"].isin(coming["veh_id"])
                              & (snap.predictions["target_seq"] <= seq)]
-
     road = art.roads.get(route)
-
-    def where(row) -> tuple[float, float]:
-        """정류장에 도착(state_cd 1)했으면 그 정류장, 아니면 다음 정류장까지 도로를 반쯤 간 자리."""
-        here = stops.loc[row.current_seq]
-        later = stops[stops.index > row.current_seq]
-        if row.state_cd == 1 or later.empty:
-            return float(here["y"]), float(here["x"])
-        if road is not None:
-            middle = road.between(int(row.current_seq), int(later.index[0]))
-            return tuple(float(v) for v in middle[len(middle) // 2])
-        nxt = later.iloc[0]
-        return float((here["y"] + nxt["y"]) / 2), float((here["x"] + nxt["x"]) / 2)
-
+    plates = snap.predictions.drop_duplicates("veh_id").set_index("veh_id")["plate_no"]
     buses = []
     for order, row in enumerate(coming.itertuples(index=False)):
-        mine_rows = ahead[ahead["veh_id"] == row.veh_id]
-        lat, lon = where(row)
+        lat, lon = bus_position(stops, road, int(row.current_seq), int(row.state_cd))
         buses.append({
-            "order": order, "veh_id": int(row.veh_id), "plate_no": snap.predictions.loc[
-                snap.predictions["veh_id"] == row.veh_id, "plate_no"].iloc[0],
+            "order": order, "veh_id": int(row.veh_id), "plate_no": plates.get(row.veh_id, ""),
             "current_seq": int(row.current_seq), "state_cd": int(row.state_cd), "current_seats": int(row.current_seats),
             "lat": lat, "lon": lon,
-            "p_seat_at": {str(int(r.target_seq)): round(float(1 - r.p0), 3) for r in mine_rows.itertuples(index=False)},
+            "p_seat_at": {str(int(r.target_seq)): round(float(1 - r.p0), 3) for r in ahead[ahead["veh_id"] == row.veh_id].itertuples(index=False)},
         })
-    # 도로 경로: 노선도 맨 위 정류장(또는 그보다 먼 버스)부터 노선도 맨 아래 정류장까지. 없으면 정류장 사이 직선.
-    if road is not None and len(window):
-        first = min([int(window.index.min())] + [int(b.current_seq) for b in coming.itertuples(index=False)])
-        path = road.between(first, int(window.index.max())).tolist()
-    else:
-        path = [[float(r["y"]), float(r["x"])] for _, r in stops[stops["direction"] == mine["direction"]].iterrows()]
-    return {
-        "route": route, "station_seq": seq, "direction": mine["direction"], "generated_at": snap.generated_at.isoformat(),
-        "stops": [{"station_seq": int(s), "station_name": r["station_name"], "lat": float(r["y"]), "lon": float(r["x"]),
-                   "is_target": bool(r["is_target"]), "is_mine": int(s) == seq} for s, r in window.iterrows()],
-        "buses": buses,
-        "path": path,
-        "path_source": "gbis_road" if road is not None else "stop_to_stop",
-    }
+    return {"route": route, "station_seq": seq, "direction": stops.loc[seq, "direction"],
+            "generated_at": snap.generated_at.isoformat(), "buses": buses}
 
 
-def route_view(snap: Snapshot, art: Artifacts, route: str, direction: str) -> dict:
-    """정류장 목록 화면 (네이버 버스처럼): 한 방향의 실제 정류장 전체와, 그 구간을 달리는 버스의 지금 위치.
+def path_view(art: Artifacts, route: str) -> dict:
+    """노선 한 바퀴의 도로 경로를 종류별 선분으로. 고속도로(회색)와 일반 도로를 나눠 그릴 수 있다.
 
-    정류장 목록은 체크포인트를 뺀 실제 정류장이다. 예측 대상(is_target)만 내 정류장으로 고를 수 있다.
-    버스는 가장 최근 수집의 위치이고, 버스가 지난 마지막 순번(current_seq)과 정류장 도착 여부(state_cd 1)로 놓는다.
+    경기버스 공식 지도의 도로 경로가 있으면 그것을, 없으면 정류장 사이 직선을 쓴다.
     """
-    stops = art.stops[(art.stops["route"] == route) & (art.stops["direction"] == direction) & ~art.stops["is_checkpoint"]]
+    stops = art.stops[art.stops["route"] == route].sort_values("station_seq")
+    road = art.roads.get(route)
+    segments: list[dict] = []
+    for a, b in zip(stops.itertuples(index=False), stops.iloc[1:].itertuples(index=False)):
+        kind = "highway" if "highway" in (a.kind, b.kind) else "road"
+        points = road.between(int(a.station_seq), int(b.station_seq)).tolist() if road is not None \
+            else [[float(a.y), float(a.x)], [float(b.y), float(b.x)]]
+        if segments and segments[-1]["kind"] == kind:
+            segments[-1]["points"].extend(points)
+        else:
+            segments.append({"kind": kind, "points": points})
+    return {"route": route, "source": "gbis_road" if road is not None else "stop_to_stop", "segments": segments}
+
+
+def route_view(snap: Snapshot, art: Artifacts, route: str) -> dict:
+    """정류장 목록 화면 (네이버 버스처럼): 노선 한 바퀴를 순서대로 한 줄로, 지금 달리는 버스 전부.
+
+    캠퍼스 → 출발권 정류장 → 고속도로(IC·JC·TG) → 서울 정류장 → 고속도로 → 도착권 정류장 → 캠퍼스.
+    서울행·영통행으로 나누지 않는다. 예측 대상(is_target)만 내 정류장으로 고를 수 있다.
+    버스는 가장 최근 수집의 위치다 (마지막으로 지난 순번 current_seq와 정류장 도착 여부 state_cd).
+    """
+    stops = art.stops[art.stops["route"] == route].sort_values("station_seq")
     if stops.empty:
-        raise KeyError(f"{route} {direction} 정류장이 없다")
-    stops = stops.sort_values("station_seq")
-    first, last = int(stops["station_seq"].min()), int(stops["station_seq"].max())
+        raise KeyError(f"{route} 노선이 없다")
+    indexed = stops.set_index("station_seq")
+    road = art.roads.get(route)
     trips = snap.trips[snap.trips["route"] == route]
-    latest = trips[trips["collected_at"] == trips["collected_at"].max()]
-    # 이 방향 첫 정류장으로 오고 있는 버스도 보인다: 반대 방향 마지막 정류장을 지난 뒤(고속도로·캠퍼스 안쪽)부터
-    route_stops = art.stops[art.stops["route"] == route]
-    other = route_stops[(route_stops["direction"].notna()) & (route_stops["direction"] != direction)
-                        & (route_stops["station_seq"] < first)]["station_seq"]
-    lower = int(other.max()) + 1 if len(other) else 0
-    on_route = latest[(latest["station_seq"] >= lower) & (latest["station_seq"] <= last)].sort_values("station_seq")
-    names = route_stops.set_index("station_seq")["station_name"]
+    latest = trips[trips["collected_at"] == trips["collected_at"].max()].sort_values("station_seq")
+    turn = next(r.turn_seq for r in ROUTES if r.name == route)
+    buses = []
+    for r in latest.itertuples(index=False):
+        lat, lon = bus_position(indexed, road, int(r.station_seq), int(r.state_cd))
+        buses.append({"veh_id": int(r.veh_id), "plate_no": r.plate_no, "current_seq": int(r.station_seq),
+                      "state_cd": int(r.state_cd), "current_seats": int(r.remain_seat_cnt), "lat": lat, "lon": lon})
     return {
-        "route": route, "direction": direction, "generated_at": snap.generated_at.isoformat(),
+        "route": route, "generated_at": snap.generated_at.isoformat(), "turn_seq": int(turn),
         "stops": [{"station_seq": int(r.station_seq), "station_name": r.station_name, "lat": float(r.y), "lon": float(r.x),
-                   "is_target": bool(r.is_target), "zone": r.zone if isinstance(r.zone, str) else None}
+                   "kind": r.kind, "is_target": bool(r.is_target), "zone": r.zone if isinstance(r.zone, str) else None,
+                   "direction": r.direction if isinstance(r.direction, str) else None}
                   for r in stops.itertuples(index=False)],
-        "buses": [{"veh_id": int(r.veh_id), "plate_no": r.plate_no, "current_seq": int(r.station_seq),
-                   "current_station_name": names.get(int(r.station_seq), ""),
-                   "stops_to_first": int(((stops["station_seq"] > r.station_seq) & (stops["station_seq"] <= first)).sum()),
-                   "state_cd": int(r.state_cd), "current_seats": int(r.remain_seat_cnt)}
-                  for r in on_route.itertuples(index=False)],
+        "buses": buses,
     }
 
 
