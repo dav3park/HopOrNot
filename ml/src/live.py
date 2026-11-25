@@ -25,6 +25,11 @@ from .waiting import (FIRST_BUS_ELAPSED_MINUTES, MAX_ELAPSED_MINUTES, MIN_RATE_P
 
 STALE_MINUTES = 15  # 마지막 수집이 이보다 오래되면 실시간 값이 아니다 (01–06시 수집 중지)
 SIMPLE_FROM_STOPS_AHEAD = 4  # 이만큼 앞부터는 중간 단계 예측이 약하므로 P(≥1), P(≥20)만 보여준다
+CUMULATIVE_BUSES = 4         # "이 버스까지 내가 탈 확률"을 계산할 다가오는 버스 수
+LINE_STOPS_BEFORE = 10       # 노선도에 보여줄 내 정류장 앞쪽 실제 정류장 수
+RECOMMEND_BEFORE, RECOMMEND_AFTER = 6, 3  # 추천 후보: 내 정류장 앞쪽·뒤쪽 실제 정류장 수
+WALK_METERS_PER_MINUTE = 70
+BUS_MINUTES_PER_STOP = 2  # 버스 도착 시간 대략값 (도착 시간은 모델로 예측하지 않는다)
 EVENT_COLUMNS = {"route": "str", "trip_id": "int64", "station_seq": "int64", "arrived_at": f"datetime64[us, {TIMEZONE}]",
                  "known_at": f"datetime64[us, {TIMEZONE}]", "seats_low": "float64", "seats_high": "float64"}
 
@@ -104,7 +109,13 @@ def previous_bus(snap: Snapshot, route: str, seq: int) -> dict | None:
 
 def my_seat_probability(snap: Snapshot, art: Artifacts, route: str, seq: int, user_arrived_at: pd.Timestamp,
                         stage_probabilities: np.ndarray) -> dict:
-    """P(내가 앉음) = Σ_s P(도착 잔여석 = s) × P(내 앞 인원 < s). 다음 버스 한 대 기준."""
+    """P(내가 앉음) = Σ_s P(도착 잔여석 = s) × P(내 앞 인원 < s).
+
+    stage_probabilities는 다가오는 버스들(가까운 순)의 단계 확률이다. 앞 버스를 못 타면 그 버스 좌석만큼
+    내 앞 인원이 줄어드니, k번째 버스까지 탈 확률 = P(내 앞 인원 < 1–k번 버스 좌석 합)이다.
+    좌석 합의 분포는 버스별 분포의 합성곱이다 (버스끼리 독립이라고 가정). 내 뒤에 온 사람은 상관없다.
+    """
+    stage_probabilities = np.atleast_2d(stage_probabilities)
     stop = art.stops[(art.stops["route"] == route) & (art.stops["station_seq"] == seq)].iloc[0]
     if stop["zone"] not in ZONES:
         return {"probability": None, "note": f"대기 인원 모델은 승차 구간({', '.join(ZONES)})에서만 학습했다"}
@@ -136,10 +147,13 @@ def my_seat_probability(snap: Snapshot, art: Artifacts, route: str, seq: int, us
                           "prev_left_full": [prev_full], "prev_seats": [prev_seats], "prev_rate": [prev_rate],
                           "prev_elapsed": [prev_elapsed], "prev_cell_ratio": [prev_cell]})
     mu = expected_ahead(art.waiting, frame)
-    seats = seat_distribution(stage_probabilities[None, :], art.within_stage)
-    probability = float(seat_probability(seats, mu, art.waiting.k)[0])
+    by_bus, total = [], None
+    for per_bus in seat_distribution(stage_probabilities[:CUMULATIVE_BUSES], art.within_stage):
+        total = per_bus if total is None else np.convolve(total, per_bus)
+        by_bus.append(round(float(seat_probability(total[None, :], mu, art.waiting.k)[0]), 3))
     return {
-        "probability": round(probability, 3),
+        "probability": by_bus[0],
+        "by_bus": by_bus,
         "expected_people_ahead": round(float(mu[0]), 1),
         "minutes_since_previous_bus": round(elapsed, 1),
         "previous_bus": None if previous is None else {
@@ -148,6 +162,12 @@ def my_seat_probability(snap: Snapshot, art: Artifacts, route: str, seq: int, us
             "departure_seats": previous["departure_seats"]},
         "note": note,
     }
+
+
+def arrival_order(coming: pd.DataFrame) -> pd.DataFrame:
+    """다가오는 버스를 도착 순서로. 남은 실제 정류장 수가 같으면 순번이 큰(체크포인트를 더 지난) 차가,
+    같은 정류장이면 이미 출발한(state_cd 2) 차가 도착한(1)·통과 중인(0) 차보다 앞서 있다."""
+    return coming.sort_values(["stops_ahead", "current_seq", "state_cd"], ascending=[True, False, False])
 
 
 def stop_prediction(snap: Snapshot, art: Artifacts, route: str, seq: int, user_arrived_at: pd.Timestamp | None = None,
@@ -159,15 +179,17 @@ def stop_prediction(snap: Snapshot, art: Artifacts, route: str, seq: int, user_a
         raise KeyError(f"{route} {seq}번 정류장은 예측 대상이 아니다")
     stop = stop.iloc[0]
     coming = snap.predictions[(snap.predictions["route"] == route) & (snap.predictions["target_seq"] == seq)]
-    # 같은 정류장에 있으면 이미 출발한(state_cd 2) 차가 도착한(1)·통과 중인(0) 차보다 앞서 있다
-    coming = coming.sort_values(["stops_ahead", "state_cd"], ascending=[True, False])
+    coming = arrival_order(coming)
     probabilities = coming[PROBABILITY_COLUMNS].to_numpy()
     buses = []
+    names = art.stops[art.stops["route"] == route].set_index("station_seq")["station_name"]
     for row, p in zip(coming.itertuples(index=False), probabilities):
         at_least = {f"{STAGE_MIN_SEATS[k]}": round(float(p[k:].sum()), 3) for k in range(1, len(STAGE_MIN_SEATS))}
         simple = row.stops_ahead >= SIMPLE_FROM_STOPS_AHEAD
         buses.append({
             "veh_id": int(row.veh_id), "plate_no": row.plate_no, "stops_ahead": int(row.stops_ahead),
+            "current_seq": int(row.current_seq), "current_station_name": names.get(row.current_seq, ""),
+            "state_cd": int(row.state_cd),
             "current_seats": int(row.current_seats), "observed_at": row.observed_at.isoformat(),
             "p_at_least": {k: v for k, v in at_least.items() if not simple or k in ("1", f"{STAGE_MIN_SEATS[-1]}")},
             "detail": "simple" if simple else "full",
@@ -179,8 +201,91 @@ def stop_prediction(snap: Snapshot, art: Artifacts, route: str, seq: int, user_a
         "my_seat": None,
     }
     if buses:
-        result["my_seat"] = my_seat_probability(snap, art, route, seq, user_arrived_at or now, probabilities[0])
+        result["my_seat"] = my_seat_probability(snap, art, route, seq, user_arrived_at or now, probabilities)
+        for bus, value in zip(buses, result["my_seat"].get("by_bus") or []):
+            bus["my_seat_by_here"] = value
     return result
+
+
+def real_ranks(stops: pd.DataFrame) -> pd.Series:
+    """노선 안에서 체크포인트를 뺀 실제 정류장 순서."""
+    return (~stops["is_checkpoint"]).groupby(stops["route"]).cumsum()
+
+
+def line_view(snap: Snapshot, art: Artifacts, route: str, seq: int) -> dict:
+    """노선도·지도용: 내 정류장 앞쪽 정류장들, 그 사이 버스 위치, 버스마다 정류장별 1석 이상 확률, 노선 경로."""
+    stops = art.stops[art.stops["route"] == route].assign(rank=lambda s: real_ranks(s)).set_index("station_seq")
+    if seq not in stops.index or not bool(stops.loc[seq, "is_target"]):
+        raise KeyError(f"{route} {seq}번 정류장은 예측 대상이 아니다")
+    mine = stops.loc[seq]
+    window = stops[(stops.index <= seq + 1) & (stops["rank"] >= mine["rank"] - LINE_STOPS_BEFORE) & ~stops["is_checkpoint"]
+                   & (stops["direction"] == mine["direction"])]
+    coming = snap.predictions[(snap.predictions["route"] == route) & (snap.predictions["target_seq"] == seq)]
+    coming = arrival_order(coming).head(CUMULATIVE_BUSES)
+    ahead = snap.predictions[(snap.predictions["route"] == route) & snap.predictions["veh_id"].isin(coming["veh_id"])
+                             & (snap.predictions["target_seq"] <= seq)]
+
+    def where(row) -> tuple[float, float]:
+        """정류장에 도착(state_cd 1)했으면 그 정류장, 아니면 다음 정류장 쪽으로 반쯤 간 자리."""
+        here = stops.loc[row.current_seq]
+        later = stops[stops.index > row.current_seq]
+        if row.state_cd == 1 or later.empty:
+            return float(here["y"]), float(here["x"])
+        nxt = later.iloc[0]
+        return float((here["y"] + nxt["y"]) / 2), float((here["x"] + nxt["x"]) / 2)
+
+    buses = []
+    for order, row in enumerate(coming.itertuples(index=False)):
+        mine_rows = ahead[ahead["veh_id"] == row.veh_id]
+        lat, lon = where(row)
+        buses.append({
+            "order": order, "veh_id": int(row.veh_id), "plate_no": snap.predictions.loc[
+                snap.predictions["veh_id"] == row.veh_id, "plate_no"].iloc[0],
+            "current_seq": int(row.current_seq), "state_cd": int(row.state_cd), "current_seats": int(row.current_seats),
+            "lat": lat, "lon": lon,
+            "p_seat_at": {str(int(r.target_seq)): round(float(1 - r.p0), 3) for r in mine_rows.itertuples(index=False)},
+        })
+    path = stops[stops["direction"] == mine["direction"]]
+    return {
+        "route": route, "station_seq": seq, "direction": mine["direction"], "generated_at": snap.generated_at.isoformat(),
+        "stops": [{"station_seq": int(s), "station_name": r["station_name"], "lat": float(r["y"]), "lon": float(r["x"]),
+                   "is_target": bool(r["is_target"]), "is_mine": int(s) == seq} for s, r in window.iterrows()],
+        "buses": buses,
+        "path": [[float(r["y"]), float(r["x"])] for _, r in path.iterrows()],
+    }
+
+
+def recommend(snap: Snapshot, art: Artifacts, route: str, seq: int, user_arrived_at: pd.Timestamp | None = None,
+              now: pd.Timestamp | None = None) -> dict:
+    """같은 노선·방향의 가까운 승차 정류장 중 다음 버스에 내가 탈 확률이 높은 순.
+
+    "지금 그 정류장에 있다면"의 확률이다. 걸어가는 시간은 거리로만 보여주고 계산에 넣지 않는다.
+    """
+    stops = art.stops[art.stops["route"] == route].assign(rank=lambda s: real_ranks(s)).set_index("station_seq")
+    if seq not in stops.index or not bool(stops.loc[seq, "is_target"]):
+        raise KeyError(f"{route} {seq}번 정류장은 예측 대상이 아니다")
+    mine = stops.loc[seq]
+    near = stops[stops["is_target"] & (stops["direction"] == mine["direction"]) & stops["zone"].isin(ZONES)
+                 & stops["rank"].between(mine["rank"] - RECOMMEND_BEFORE, mine["rank"] + RECOMMEND_AFTER)]
+    lat0, lon0 = np.radians(mine["y"]), np.radians(mine["x"])
+    candidates = []
+    for s, r in near.iterrows():
+        result = stop_prediction(snap, art, route, int(s), user_arrived_at, now)
+        if not result["my_seat"] or result["my_seat"]["probability"] is None:
+            continue
+        lat, lon = np.radians(r["y"]), np.radians(r["x"])
+        meters = 2 * 6_371_000 * np.arcsin(np.sqrt(np.sin((lat - lat0) / 2) ** 2
+                                                   + np.cos(lat0) * np.cos(lat) * np.sin((lon - lon0) / 2) ** 2))
+        walk = meters / WALK_METERS_PER_MINUTE
+        bus_eta = result["buses"][0]["stops_ahead"] * BUS_MINUTES_PER_STOP
+        candidates.append({
+            "station_seq": int(s), "station_name": r["station_name"], "stops_from_mine": int(r["rank"] - mine["rank"]),
+            "distance_m": int(round(meters)), "walk_minutes": int(np.ceil(walk)), "bus_eta_minutes": int(bus_eta),
+            "reachable": bool(int(s) == seq or walk <= bus_eta), "my_seat": result["my_seat"]["probability"],
+            "next_bus_stops_ahead": result["buses"][0]["stops_ahead"], "is_mine": int(s) == seq,
+        })
+    candidates.sort(key=lambda c: (not c["reachable"], -c["my_seat"]))  # 갈 수 있는 곳 먼저
+    return {"route": route, "station_seq": seq, "generated_at": snap.generated_at.isoformat(), "candidates": candidates}
 
 
 def check(at: datetime):

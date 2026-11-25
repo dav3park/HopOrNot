@@ -1,0 +1,1 @@
+{"route":"1112","station_seq":62,"generated_at":"2026-11-20T18:08:18.812460+09:00","candidates":[{"station_seq":49,"station_name":"가천대","stops_from_mine":-6,"distance_m":22236,"walk_minutes":318,"bus_eta_minutes":4,"reachable":false,"my_seat":0.943,"next_bus_stops_ahead":2,"is_mine":false}]}

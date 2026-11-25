@@ -11,6 +11,8 @@
 | `GET /stops?route=M5107` | 예측 대상 정류장 (`station_seq`, 이름, 방향, 구역) |
 | `GET /predict?route=M5107&station_seq=36` | 다가오는 버스 목록 + `my_seat` |
 | `GET /predict?...&arrived_at=2026-11-12T18:05:00+09:00` | 내가 정류장에 도착한 시각을 지정 (없으면 지금) |
+| `GET /line?route=M5107&station_seq=36` | 노선도·지도: 내 정류장 앞쪽 정류장(좌표), 오는 버스 위치, 버스별 정류장별 1석 이상 확률, 노선 경로 |
+| `GET /recommend?route=M5107&station_seq=36` | 같은 노선·방향의 가까운 승차 정류장을 다음 버스에 탈 확률 순으로 (거리, 도보 시간, 버스보다 먼저 갈 수 있는지) |
 | `GET /docs` | 자동 생성된 API 문서 |
 
 `/predict` 응답:
@@ -30,7 +32,8 @@
 ```
 
 - `p_at_least["k"]` = k석 이상 남아 도착할 확률. 4정거장 이상 앞(`detail: simple`)은 중간 단계 예측이 약해서 1석·20석만 준다.
-- `my_seat`는 다음 버스 한 대 기준이고, 승차 구간(출발권·서울권)에서만 나온다.
+- `my_seat.probability`는 다음 버스에 탈 확률, `my_seat.by_bus[k]`(버스별 `my_seat_by_here`)는 k번째 버스까지 탈 확률이다.
+  앞 버스를 못 타면 그 버스 좌석만큼 내 앞 인원이 줄어드므로 P(내 앞 인원 < 1–k번 버스 좌석 합)으로 계산한다. 승차 구간(출발권·서울권)에서만 나온다.
   `expected_people_ahead` = 앞차 이후 새로 온 사람 + 앞차가 만석으로 떠났으면 남은 사람 (`src/waiting.py`).
 - `stale: true`면 마지막 수집이 15분 넘게 지났다 (01–06시 수집 중지).
 - 확률 보정은 아직 적용하지 않았다 (`ml/DECISIONS.md` 확률 보정 1차 시험).
