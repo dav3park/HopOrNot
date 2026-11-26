@@ -10,19 +10,29 @@ struct RouteScreen: View {
     @State private var showSettings = false
     @State private var scrolled = false
 
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                RouteContent(route: route)
+        VStack(spacing: 0) {
+            TopBar(onBack: { dismiss() }) {
+                RouteBadge(route: route, size: 26)
+            } trailing: {
+                RoundIconButton(label: "설정", action: { showSettings = true }) { SlidersGlyph() }
             }
-            .background(Theme.background)
-            .refreshable { await model.refreshRoute() }
-            .onChange(of: model.routeView == nil) {
-                guard !scrolled, let seq = model.scrollTargetSeq else { return }
-                scrolled = true
-                proxy.scrollTo("stop-\(seq)", anchor: .center)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    RouteContent(route: route)
+                }
+                .refreshable { await model.refreshRoute() }
+                .onChange(of: model.routeView == nil) {
+                    guard !scrolled, let seq = model.scrollTargetSeq else { return }
+                    scrolled = true
+                    proxy.scrollTo("stop-\(seq)", anchor: .center)
+                }
             }
         }
+        .background(Brand.paper.ignoresSafeArea())
+        .toolbar(.hidden, for: .navigationBar)
         .task(id: "\(route.rawValue)-\(model.mode.rawValue)") {
             // 데모: 2분 간격 장면을 2.5초마다 (재생). 서버: 30초마다 (수집은 피크 2분 간격)
             while !Task.isCancelled {
@@ -33,16 +43,11 @@ struct RouteScreen: View {
                 try? await Task.sleep(for: .seconds(model.mode == .demo ? 2.5 : 30))
             }
         }
-        .onAppear { model.open(route) }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text(route.rawValue).font(.system(size: 19, weight: .heavy))
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel("설정")
-            }
+        .onAppear {
+            model.open(route)
+            #if DEBUG
+            model.debugAutoStation()
+            #endif
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
     }
@@ -70,11 +75,15 @@ struct RouteContent: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
 
-            if let error = model.errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color(hex: 0xB4570A))
-                    .padding(.horizontal, 16).padding(.bottom, 8)
+            if let error = model.routeStatus.error {
+                Group {
+                    if model.routeView == nil {
+                        ErrorState(error: error) { Task { await model.refreshRoute() } }
+                    } else {
+                        StaleBanner(error: error, since: model.routeView?.generatedAt) { Task { await model.refreshRoute() } }
+                    }
+                }
+                .padding(.horizontal, 16).padding(.bottom, 8)
             }
 
             if let view = model.routeView {
@@ -82,8 +91,8 @@ struct RouteContent: View {
                     model.openStation(stop.info)
                 }
                 .background(Theme.card)
-            } else {
-                ProgressView().frame(maxWidth: .infinity).padding(40)
+            } else if model.routeStatus.error == nil {
+                RoadLoader(text: "\(route.rawValue) 버스 위치를 불러오는 중").padding(.vertical, 56).padding(.horizontal, 24)
             }
 
             Text("버스 위치는 마지막으로 지난 정류장 기준입니다 (정류장에 도착했으면 그 정류장, 아니면 다음 정류장과의 사이). 버스 옆 숫자는 지금 잔여석입니다.")
