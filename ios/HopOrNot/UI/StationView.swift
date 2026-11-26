@@ -15,23 +15,33 @@ struct StationView: View {
         var id: String { rawValue }
     }
 
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                StationContent(view: $view)
+        VStack(spacing: 0) {
+            TopBar(onBack: { dismiss() }) {
+                if let route = model.route { RouteBadge(route: route, size: 24) }
+            } trailing: {
+                RoundIconButton(label: "설정", action: { showSettings = true }) { SlidersGlyph() }
             }
-            #if DEBUG
-            .onChange(of: model.history == nil) {
-                // 개발용: -scrollTo history|buses|recommend
-                let arguments = ProcessInfo.processInfo.arguments
-                if let i = arguments.firstIndex(of: "-scrollTo"), i + 1 < arguments.count, model.history != nil {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { proxy.scrollTo(arguments[i + 1], anchor: .top) }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    StationContent(view: $view)
                 }
+                #if DEBUG
+                .onChange(of: model.history == nil) {
+                    // 개발용: -scrollTo history|buses|recommend
+                    let arguments = ProcessInfo.processInfo.arguments
+                    if let i = arguments.firstIndex(of: "-scrollTo"), i + 1 < arguments.count, model.history != nil {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { proxy.scrollTo(arguments[i + 1], anchor: .top) }
+                    }
+                }
+                #endif
             }
-            #endif
+            .refreshable { await model.refreshStop() }
         }
-        .background(Theme.background)
-        .refreshable { await model.refreshStop() }
+        .background(Brand.paper.ignoresSafeArea())
+        .toolbar(.hidden, for: .navigationBar)
         .task(id: "\(model.route?.rawValue ?? "")-\(model.stop?.stationSeq ?? 0)-\(model.mode.rawValue)") {
             // 수집 주기(피크 2분)에 맞춰 1분마다 갱신. 데모는 한 번만.
             while !Task.isCancelled {
@@ -43,14 +53,10 @@ struct StationView: View {
                 try? await Task.sleep(for: .seconds(60))
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel("설정")
-            }
-        }
-        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showSettings) { SettingsView() }
+        #if DEBUG
+        .onAppear { model.debugAutoSwitch() }
+        #endif
     }
 }
 
@@ -65,24 +71,26 @@ struct StationContent: View {
             VStack(alignment: .leading, spacing: 14) {
                 header
 
-                if let error = model.errorMessage {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color(hex: 0xB4570A))
-                        .card()
+                if let error = model.stopStatus.error {
+                    if model.prediction == nil {
+                        ErrorState(error: error) { Task { await model.refreshStop() } }
+                    } else {
+                        StaleBanner(error: error, since: model.prediction?.generatedAt) { Task { await model.refreshStop() } }
+                    }
                 }
 
+                if model.prediction == nil && model.stopStatus.error == nil {
+                    StationSkeleton()
+                } else if model.prediction != nil {
                 DecisionCard(decision: decision, stopName: model.stop?.stationName ?? "",
                              nextBusMinutes: model.prediction?.buses.first?.etaMinutes) {
                     if let seq = decision.alternativeSeq { Task { await model.switchStop(to: seq) } }
                 }
+                }
 
                 if let route = model.route, let line = model.line, let stops = model.routeView?.stops, let mySeq = model.stop?.stationSeq {
                     VStack(alignment: .leading, spacing: 10) {
-                        Picker("보기", selection: $view) {
-                            ForEach(StationView.ViewKind.allCases) { Text($0.rawValue).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
+                        PillPicker(options: StationView.ViewKind.allCases.map { ($0, $0.rawValue) }, selection: $view)
 
                         switch view {
                         case .strip:
@@ -124,7 +132,7 @@ struct StationContent: View {
                             .font(.system(size: 14, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(Theme.card, in: RoundedRectangle(cornerRadius: 14))
+                            .background(Brand.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
@@ -142,7 +150,10 @@ struct StationContent: View {
                         HistoryCard(route: route, history: history, now: model.prediction?.generatedAt ?? .now)
                             .id("history")
                     } else if model.prediction != nil {
-                        ProgressView("지난 7일 도착 잔여석 불러오는 중").font(.system(size: 12)).frame(maxWidth: .infinity).card()
+                        VStack(alignment: .leading, spacing: 10) {
+                            SkeletonBlock(width: 150, height: 15)
+                            SkeletonBlock(height: 110, radius: 10)
+                        }.card()
                     }
                 }
 
@@ -163,12 +174,11 @@ struct StationContent: View {
         VStack(alignment: .leading, spacing: 4) {
             if let route = model.route {
                 HStack(spacing: 10) {
-                    RouteBadge(route: route, size: 26)
                     Text("\(model.stop?.stationName ?? "")\(model.stop?.direction.map { " · \($0)" } ?? "")")
                         .font(.system(size: 15, weight: .semibold))
                         .lineLimit(1)
                     Spacer()
-                    if model.isLoading { ProgressView().controlSize(.small) }
+                    if model.stopStatus.isLoading { ProgressView().controlSize(.small) }
                 }
             }
             LiveDot(label: liveLabel)
@@ -187,5 +197,24 @@ struct StationContent: View {
             .font(.system(size: 11))
             .foregroundStyle(.tertiary)
             .padding(.horizontal, 4)
+    }
+}
+
+/// 정류장 화면을 처음 불러올 때 자리 표시 (판단 카드 + 노선도)
+struct StationSkeleton: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
+                SkeletonBlock(width: 150, height: 12)
+                SkeletonBlock(width: 220, height: 28, radius: 8)
+                SkeletonBlock(width: 180, height: 13)
+            }
+            .card()
+            VStack(spacing: 8) {
+                RoadLoader(text: "오는 버스를 찾는 중")
+            }
+            .padding(.vertical, 22)
+            .card(padding: 14)
+        }
     }
 }

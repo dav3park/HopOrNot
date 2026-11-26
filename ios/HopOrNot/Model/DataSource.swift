@@ -58,6 +58,13 @@ struct LiveSource: DataSource {
     var apiKey: String = ""
 
     private func get<T: Decodable>(_ path: String, _ query: [String: String]) async throws -> T {
+        #if DEBUG
+        // 개발용: -delay 2 로 응답을 2초 늦춰 느린 네트워크와 취소를 재현한다
+        let launch = ProcessInfo.processInfo.arguments
+        if let i = launch.firstIndex(of: "-delay"), i + 1 < launch.count, let seconds = Double(launch[i + 1]) {
+            try? await Task.sleep(for: .seconds(seconds))
+        }
+        #endif
         var components = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false)!
         components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         var request = URLRequest(url: components.url!)

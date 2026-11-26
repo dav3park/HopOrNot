@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// design/ 프로토타입의 색과 모양 (노선 색, 확률 3단계 색, 흰 카드 + 회색 배경)
+/// 화면들이 쓰는 색 이름. 값은 Brand 에서 온다 (노선 색, 확률 색, 잔여석 색).
 enum Theme {
     static func route(_ route: Route?) -> Color {
-        route == .m5107 ? Color(hex: 0xB4123C) : Color(hex: 0xE5332A)
+        route == .m5107 ? Color(hex: 0xB4123C) : Brand.red
     }
 
     static func routeSoft(_ route: Route?) -> Color {
@@ -15,9 +15,7 @@ enum Theme {
         p >= 0.7 ? Color(hex: 0x1F5FBF) : p >= 0.4 ? Color(hex: 0x7FA6DD) : Color(hex: 0xF0A04B)
     }
 
-    static func text(_ p: Double) -> Color {
-        p >= 0.7 ? Color(hex: 0x1F5FBF) : p >= 0.4 ? Color(hex: 0x4A6FA5) : Color(hex: 0xB4570A)
-    }
+    static func text(_ p: Double) -> Color { Brand.probability(p) }
 
     static func tint(_ p: Double) -> Color {
         p >= 0.7 ? Color(hex: 0xEAF1FB) : p >= 0.4 ? Color(hex: 0xEEF2F8) : Color(hex: 0xFDF1E4)
@@ -42,37 +40,18 @@ enum Theme {
         switch seats {
         case ..<1: Color(hex: 0xD93025)
         case ..<10: Color(hex: 0xB4570A)
-        default: .primary
+        default: Brand.ink
         }
     }
 
     static let accent = Color(hex: 0x1F5FBF)
-    static let live = Color(hex: 0x34C759)
-    static let hairline = Color(.separator)
-    static let background = Color(.systemGroupedBackground)
-    static let card = Color(.secondarySystemGroupedBackground)
+    static let live = Color(hex: 0x2FB86B)
+    static let hairline = Brand.line
+    static let background = Brand.paper
+    static let card = Brand.card
 }
 
-extension Color {
-    init(hex: UInt32) {
-        self.init(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
-    }
-}
-
-struct CardStyle: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-}
-
-extension View {
-    func card() -> some View { modifier(CardStyle()) }
-}
-
-/// 노선 번호 + 종류 뱃지
+/// 노선 번호(DIN) + 종류 뱃지
 struct RouteBadge: View {
     let route: Route
     var size: CGFloat = 26
@@ -80,18 +59,18 @@ struct RouteBadge: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(route.rawValue)
-                .font(.system(size: size, weight: .heavy))
-                .tracking(-0.4)
+                .font(Brand.number(size))
+                .foregroundStyle(Brand.ink)
             Text(route.kind)
-                .font(.system(size: 11, weight: .bold))
+                .font(Brand.body(11, .heavy))
                 .padding(.horizontal, 7).padding(.vertical, 3)
-                .foregroundStyle(Theme.route(route))
-                .background(Theme.routeSoft(route), in: RoundedRectangle(cornerRadius: 6))
+                .foregroundStyle(.white)
+                .background(Theme.route(route), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
     }
 }
 
-/// 확률 범례 (프로토타입 하단과 같다)
+/// 확률 범례
 struct ProbabilityLegend: View {
     var title = "확률"
 
@@ -102,8 +81,8 @@ struct ProbabilityLegend: View {
             item(0.5, "40–69%")
             item(0.2, "40% 미만")
         }
-        .font(.system(size: 11))
-        .foregroundStyle(.secondary)
+        .font(Brand.body(11))
+        .foregroundStyle(Brand.inkSoft)
     }
 
     private func item(_ p: Double, _ label: String) -> some View {
@@ -114,6 +93,7 @@ struct ProbabilityLegend: View {
     }
 }
 
+/// 실시간 점 + 글자
 struct LiveDot: View {
     let label: String
     var body: some View {
@@ -121,7 +101,7 @@ struct LiveDot: View {
             Circle().fill(Theme.live).frame(width: 7, height: 7)
             Text(label)
         }
-        .font(.system(size: 12))
-        .foregroundStyle(.secondary)
+        .font(Brand.body(12, .medium))
+        .foregroundStyle(Brand.inkSoft)
     }
 }
